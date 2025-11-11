@@ -15,6 +15,7 @@ namespace GaussianImageProcessingSystem.Services
         private bool _isListening;
         private CancellationTokenSource _cancellationTokenSource;
         private readonly object _clientLock = new object();
+        private List<Task> _clientTasks = new List<Task>();
 
         public int Port { get; private set; }
         public bool IsListening => _isListening;
@@ -67,13 +68,13 @@ namespace GaussianImageProcessingSystem.Services
 
             _isListening = false;
             _cancellationTokenSource?.Cancel();
-            
+
             lock (_clientLock)
             {
                 _connectedClient?.Close();
                 _connectedClient = null;
             }
-            
+
             _tcpListener?.Stop();
         }
 
@@ -87,9 +88,13 @@ namespace GaussianImageProcessingSystem.Services
                 try
                 {
                     TcpClient client = await _tcpListener.AcceptTcpClientAsync();
-                    
+
                     // Обрабатываем каждого клиента в отдельной задаче
-                    _ = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
+                    var task = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
+                    lock (_clientTasks)
+                    {
+                        _clientTasks.Add(task);
+                    }
                 }
                 catch (ObjectDisposedException)
                 {
@@ -111,61 +116,87 @@ namespace GaussianImageProcessingSystem.Services
         private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
         {
             NetworkStream stream = null;
-            
+
             try
             {
                 stream = client.GetStream();
-                
-                while (_isListening && !cancellationToken.IsCancellationRequested && client.Connected)
+
+                while (client.Connected && !cancellationToken.IsCancellationRequested)
                 {
+                    // Проверяем, есть ли доступные данные
+                    if (!stream.DataAvailable)
+                    {
+                        await Task.Delay(10, cancellationToken);
+                        continue;
+                    }
+
                     // Читаем длину сообщения (4 байта)
                     byte[] lengthBuffer = new byte[4];
                     int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, cancellationToken);
-                    
+
                     if (bytesRead == 0)
                         break; // Клиент отключился
-                    
+
+                    if (bytesRead < 4)
+                        continue; // Неполные данные
+
                     int messageLength = BitConverter.ToInt32(lengthBuffer, 0);
-                    
+
+                    if (messageLength <= 0 || messageLength > 50000000) // Защита от слишком больших сообщений
+                        continue;
+
                     // Читаем само сообщение
                     byte[] messageBuffer = new byte[messageLength];
                     int totalRead = 0;
-                    
-                    while (totalRead < messageLength)
+
+                    while (totalRead < messageLength && client.Connected)
                     {
                         bytesRead = await stream.ReadAsync(
-                            messageBuffer, 
-                            totalRead, 
-                            messageLength - totalRead, 
+                            messageBuffer,
+                            totalRead,
+                            messageLength - totalRead,
                             cancellationToken);
-                        
+
                         if (bytesRead == 0)
                             break;
-                        
+
                         totalRead += bytesRead;
                     }
-                    
+
                     if (totalRead == messageLength)
                     {
                         NetworkMessage message = NetworkMessage.Deserialize(messageBuffer);
-                        message.SenderIp = ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString();
-                        message.SenderPort = ((IPEndPoint)client.Client.RemoteEndPoint).Port;
-                        
+
+                        // Получаем информацию об отправителе
+                        var remoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
+                        if (remoteEndpoint != null)
+                        {
+                            message.SenderIp = remoteEndpoint.Address.ToString();
+                            message.SenderPort = remoteEndpoint.Port;
+                        }
+
                         OnMessageReceived(message, client);
                     }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
+            }
             catch (Exception ex)
             {
-                if (_isListening)
+                if (!cancellationToken.IsCancellationRequested)
                 {
                     OnError($"Ошибка обработки клиента: {ex.Message}");
                 }
             }
             finally
             {
-                stream?.Close();
-                client?.Close();
+                try
+                {
+                    stream?.Close();
+                }
+                catch { }
             }
         }
 
@@ -178,18 +209,36 @@ namespace GaussianImageProcessingSystem.Services
             {
                 TcpClient client = new TcpClient();
                 await client.ConnectAsync(targetIp, targetPort);
-                
+
                 lock (_clientLock)
                 {
                     _connectedClient = client;
                 }
-                
+
                 return client;
             }
             catch (Exception ex)
             {
                 OnError($"Ошибка подключения к {targetIp}:{targetPort}: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Начать прием сообщений из существующего подключения
+        /// </summary>
+        public void StartReceivingAsync(TcpClient client)
+        {
+            if (client == null || !client.Connected)
+                return;
+
+            if (_cancellationTokenSource == null || _cancellationTokenSource.IsCancellationRequested)
+                _cancellationTokenSource = new CancellationTokenSource();
+
+            var task = Task.Run(() => HandleClientAsync(client, _cancellationTokenSource.Token));
+            lock (_clientTasks)
+            {
+                _clientTasks.Add(task);
             }
         }
 
@@ -207,19 +256,19 @@ namespace GaussianImageProcessingSystem.Services
                 }
 
                 byte[] messageData = message.Serialize();
-                
+
                 // Добавляем префикс длины (4 байта)
                 byte[] lengthPrefix = BitConverter.GetBytes(messageData.Length);
                 byte[] dataToSend = new byte[lengthPrefix.Length + messageData.Length];
-                
+
                 Buffer.BlockCopy(lengthPrefix, 0, dataToSend, 0, lengthPrefix.Length);
                 Buffer.BlockCopy(messageData, 0, dataToSend, lengthPrefix.Length, messageData.Length);
-                
+
                 NetworkStream stream = client.GetStream();
-                
+
                 await stream.WriteAsync(dataToSend, 0, dataToSend.Length);
                 await stream.FlushAsync();
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -235,26 +284,26 @@ namespace GaussianImageProcessingSystem.Services
         public async Task<bool> SendMessageAsync(NetworkMessage message, string targetIp, int targetPort)
         {
             TcpClient client = null;
-            
+
             try
             {
                 client = new TcpClient();
                 await client.ConnectAsync(targetIp, targetPort);
-                
+
                 byte[] messageData = message.Serialize();
-                
+
                 // Добавляем префикс длины (4 байта)
                 byte[] lengthPrefix = BitConverter.GetBytes(messageData.Length);
                 byte[] dataToSend = new byte[lengthPrefix.Length + messageData.Length];
-                
+
                 Buffer.BlockCopy(lengthPrefix, 0, dataToSend, 0, lengthPrefix.Length);
                 Buffer.BlockCopy(messageData, 0, dataToSend, lengthPrefix.Length, messageData.Length);
-                
+
                 NetworkStream stream = client.GetStream();
-                
+
                 await stream.WriteAsync(dataToSend, 0, dataToSend.Length);
                 await stream.FlushAsync();
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -289,13 +338,13 @@ namespace GaussianImageProcessingSystem.Services
         public void Dispose()
         {
             StopListening();
-            
+
             lock (_clientLock)
             {
                 _connectedClient?.Close();
                 _connectedClient = null;
             }
-            
+
             _cancellationTokenSource?.Dispose();
         }
     }

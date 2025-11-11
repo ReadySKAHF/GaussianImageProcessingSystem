@@ -6,7 +6,7 @@ using Newtonsoft.Json;
 namespace GaussianImageProcessingSystem.Nodes
 {
     /// <summary>
-    /// Master узел для распределения задач с выбором по минимальному среднему времени
+    /// Master узел для распределения задач с использованием Round Robin
     /// </summary>
     public class MasterNode : NodeBase
     {
@@ -20,6 +20,10 @@ namespace GaussianImageProcessingSystem.Nodes
         private int _totalTasksCompleted = 0;
         private DateTime _firstTaskTime;
         private DateTime _lastTaskTime;
+
+        // Для Round Robin
+        private int _currentSlaveIndex = 0;
+        private readonly object _slaveSelectionLock = new object();
 
         public int RegisteredSlavesCount => _registeredSlaves.Count;
 
@@ -38,7 +42,7 @@ namespace GaussianImageProcessingSystem.Nodes
             base.Start();
             Log("═══════════════════════════════════════════════════════");
             Log("                  MASTER УЗЕЛ ЗАПУЩЕН                  ");
-            Log("         Алгоритм: выбор Slave с min средним временем  ");
+            Log("              Алгоритм: Round Robin (RR)               ");
             Log("═══════════════════════════════════════════════════════");
             Log("");
         }
@@ -185,12 +189,12 @@ namespace GaussianImageProcessingSystem.Nodes
                     ClientInfo = clientInfo
                 };
 
-                // Выбираем Slave с минимальным средним временем
-                SlaveInfo bestSlave = SelectBestSlave();
+                // Выбираем Slave по Round Robin
+                SlaveInfo selectedSlave = SelectSlaveRoundRobin();
 
-                if (bestSlave != null)
+                if (selectedSlave != null)
                 {
-                    AssignTaskToSlave(task, bestSlave);
+                    AssignTaskToSlave(task, selectedSlave);
                 }
                 else
                 {
@@ -206,37 +210,36 @@ namespace GaussianImageProcessingSystem.Nodes
         }
 
         /// <summary>
-        /// Выбор лучшего Slave по минимальному среднему времени обработки
+        /// Выбор Slave узла по алгоритму Round Robin
         /// </summary>
-        private SlaveInfo SelectBestSlave()
+        private SlaveInfo SelectSlaveRoundRobin()
         {
-            // Собираем свободные Slave
-            var freeSlaves = _registeredSlaves
-                .Where(s => !_slaveBusyStatus[$"{s.IpAddress}:{s.Port}"])
-                .ToList();
-
-            if (freeSlaves.Count == 0)
-                return null;
-
-            // Выбираем Slave с минимальным средним временем
-            // Если у Slave еще не было задач (AverageProcessingTime == 0), считаем его приоритетным
-            SlaveInfo bestSlave = freeSlaves
-                .OrderBy(s => s.TasksCompleted == 0 ? -1 : s.AverageProcessingTime)
-                .First();
-
-            int slaveNumber = _registeredSlaves.FindIndex(s =>
-                s.IpAddress == bestSlave.IpAddress && s.Port == bestSlave.Port) + 1;
-
-            if (bestSlave.TasksCompleted == 0)
+            lock (_slaveSelectionLock)
             {
-                Log($"🎯 Выбран Slave #{slaveNumber} (новый, без истории)");
-            }
-            else
-            {
-                Log($"🎯 Выбран Slave #{slaveNumber} (среднее время: {bestSlave.AverageProcessingTime:F2} сек, задач: {bestSlave.TasksCompleted})");
-            }
+                // Собираем все свободные Slave
+                var freeSlaves = _registeredSlaves
+                    .Where(s => !_slaveBusyStatus[$"{s.IpAddress}:{s.Port}"])
+                    .ToList();
 
-            return bestSlave;
+                if (freeSlaves.Count == 0)
+                    return null;
+
+                // Round Robin: выбираем следующий свободный Slave по кругу
+                SlaveInfo selected = freeSlaves[_currentSlaveIndex % freeSlaves.Count];
+                _currentSlaveIndex++;
+
+                // Сбрасываем счетчик при достижении большого значения
+                if (_currentSlaveIndex > 1000000)
+                    _currentSlaveIndex = 0;
+
+                int slaveNumber = _registeredSlaves.FindIndex(s =>
+                    s.IpAddress == selected.IpAddress && s.Port == selected.Port) + 1;
+
+                Log($"🎯 Round Robin → Slave #{slaveNumber} " +
+                    $"(задач: {selected.TasksCompleted}, среднее: {selected.AverageProcessingTime:F2} сек)");
+
+                return selected;
+            }
         }
 
         /// <summary>
@@ -264,10 +267,11 @@ namespace GaussianImageProcessingSystem.Nodes
                     int slaveNumber = _registeredSlaves.FindIndex(s =>
                         s.IpAddress == slave.IpAddress && s.Port == slave.Port) + 1;
 
-                    Log($"  Задача {task.FileName} → Slave #{slaveNumber} ({slave.IpAddress}:{slave.Port})");
+                    Log($"  ➤ Задача {task.FileName} → Slave #{slaveNumber} ({slave.IpAddress}:{slave.Port})");
 
                     int busyCount = _slaveBusyStatus.Count(kvp => kvp.Value);
-                    Log($"      Занято: {busyCount}/{_registeredSlaves.Count}, Свободно: {_registeredSlaves.Count - busyCount}");
+                    int freeCount = _slaveBusyStatus.Count(kvp => !kvp.Value);
+                    Log($"      Занято: {busyCount}/{_registeredSlaves.Count}, Свободно: {freeCount}");
                     Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 }
                 else
@@ -297,8 +301,8 @@ namespace GaussianImageProcessingSystem.Nodes
                     slave.TotalProcessingTime = (double)stats.TotalProcessingTime;
                     slave.AverageProcessingTime = (double)stats.AverageProcessingTime;
 
-                    Log($"📊 Обновлена статистика Slave (порт {port}): " +
-                        $"задач={slave.TasksCompleted}, среднее время={slave.AverageProcessingTime:F2} сек");
+                    int slaveNumber = _registeredSlaves.FindIndex(s => s.Port == port) + 1;
+                    Log($"📊 Slave #{slaveNumber}: задач={slave.TasksCompleted}, среднее={slave.AverageProcessingTime:F2} сек");
                 }
             }
             catch (Exception ex)
@@ -341,7 +345,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     if (_slaveBusyStatus.ContainsKey(slaveKey))
                     {
                         _slaveBusyStatus[slaveKey] = false;
-                        Log($"   Slave {slaveKey} теперь СВОБОДЕН!");
+                        Log($"   ✅ Slave #{slaveNumber} теперь СВОБОДЕН!");
                     }
 
                     // Отправляем результат клиенту
@@ -357,7 +361,7 @@ namespace GaussianImageProcessingSystem.Nodes
 
                         if (sent)
                         {
-                            Log($"   Результат отправлен клиенту");
+                            Log($"   ✅ Результат отправлен клиенту");
                         }
                     }
 
@@ -372,6 +376,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     ShowFinalStatistics();
                 }
 
+                // Обрабатываем очередь после освобождения Slave
                 ProcessTaskQueue();
             }
             catch (Exception ex)
@@ -387,9 +392,9 @@ namespace GaussianImageProcessingSystem.Nodes
         {
             while (_taskQueue.Count > 0)
             {
-                SlaveInfo bestSlave = SelectBestSlave();
+                SlaveInfo selectedSlave = SelectSlaveRoundRobin();
 
-                if (bestSlave == null)
+                if (selectedSlave == null)
                 {
                     Log($"Очередь: {_taskQueue.Count} задач ожидают, но нет свободных Slave", LogLevel.Warning);
                     ShowSlaveStatus();
@@ -397,9 +402,9 @@ namespace GaussianImageProcessingSystem.Nodes
                 }
 
                 PendingTask task = _taskQueue.Dequeue();
-                Log($"Задача {task.FileName} извлечена из очереди (осталось в очереди: {_taskQueue.Count})");
+                Log($"⬆️ Задача {task.FileName} извлечена из очереди (осталось: {_taskQueue.Count})");
 
-                AssignTaskToSlave(task, bestSlave);
+                AssignTaskToSlave(task, selectedSlave);
             }
         }
 
@@ -426,7 +431,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 string status = isBusy ? "🔴 ЗАНЯТ" : "🟢 СВОБОДЕН";
 
                 Log($"  [{i + 1}] {slave.IpAddress}:{slave.Port.ToString().PadRight(5)} - {status}");
-                Log($"      Задач: {slave.TasksCompleted}, Среднее время: {slave.AverageProcessingTime:F2} сек");
+                Log($"      Задач: {slave.TasksCompleted}, Среднее: {slave.AverageProcessingTime:F2} сек");
             }
 
             int busyCount = _slaveBusyStatus.Count(kvp => kvp.Value);
@@ -461,7 +466,7 @@ namespace GaussianImageProcessingSystem.Nodes
             Log($"└───────────────────────────────────────────────────────────┘");
             Log($"");
             Log($"┌───────────────────────────────────────────────────────────┐");
-            Log($"│         Производительность Slave (алгоритм выбора)        │");
+            Log($"│     Производительность Slave (Round Robin)                │");
             Log($"├───────────────────────────────────────────────────────────┤");
 
             for (int i = 0; i < _registeredSlaves.Count; i++)
@@ -478,6 +483,28 @@ namespace GaussianImageProcessingSystem.Nodes
                 Log($"│   Нагрузка: {bar}                                     │");
                 Log($"├───────────────────────────────────────────────────────────┤");
             }
+
+            Log($"└───────────────────────────────────────────────────────────┘");
+
+            // Показываем эффективность распределения
+            double idealPercentage = 100.0 / _registeredSlaves.Count;
+            double maxDeviation = _registeredSlaves
+                .Select(s => Math.Abs((s.TasksCompleted * 100.0 / _totalTasksCompleted) - idealPercentage))
+                .Max();
+
+            Log($"");
+            Log($"┌───────────────────────────────────────────────────────────┐");
+            Log($"│ Эффективность Round Robin                                 │");
+            Log($"├───────────────────────────────────────────────────────────┤");
+            Log($"│ Идеальное распределение:    {idealPercentage:F1}% на каждый Slave        │");
+            Log($"│ Максимальное отклонение:    {maxDeviation:F1}%                           │");
+
+            if (maxDeviation < 5)
+                Log($"│ Оценка:                     ⭐⭐⭐ Отлично!               │");
+            else if (maxDeviation < 10)
+                Log($"│ Оценка:                     ⭐⭐ Хорошо                  │");
+            else
+                Log($"│ Оценка:                     ⭐ Удовлетворительно         │");
 
             Log($"└───────────────────────────────────────────────────────────┘");
         }

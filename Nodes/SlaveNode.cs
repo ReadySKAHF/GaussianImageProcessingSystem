@@ -68,6 +68,9 @@ namespace GaussianImageProcessingSystem.Nodes
                     if (sent)
                     {
                         Log($"✅ Запрос отправлен, ожидание подтверждения...");
+
+                        // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: начинаем читать сообщения от Master
+                        _tcpService.StartReceivingAsync(_masterConnection);
                     }
                     else
                     {
@@ -77,7 +80,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 else
                 {
                     Log($"❌ Не удалось подключиться к Master узлу", LogLevel.Error);
-                    Log($"   Проверьте что Master узел запущен на {_masterIp}:{_masterPort}", LogLevel.Warning);
+                    Log($"   Убедитесь, что Master запущен на {_masterIp}:{_masterPort}");
                 }
             }
             catch (Exception ex)
@@ -121,8 +124,9 @@ namespace GaussianImageProcessingSystem.Nodes
                 string packetJson = System.Text.Encoding.UTF8.GetString(message.Data);
                 ImagePacket packet = JsonConvert.DeserializeObject<ImagePacket>(packetJson);
 
+                Log($"");
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"   НОВАЯ ЗАДАЧА: {packet.FileName}");
+                Log($"📥 НОВАЯ ЗАДАЧА: {packet.FileName}");
                 Log($"   PacketId: {packet.PacketId}");
                 Log($"   Размер: {packet.ImageData.Length / 1024}KB");
                 Log($"   Разрешение: {packet.Width}x{packet.Height}");
@@ -134,7 +138,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     try
                     {
                         DateTime startTime = DateTime.Now;
-                        Log($"   Начало обработки изображения: {packet.FileName}");
+                        Log($"⚙️ Начало обработки: {packet.FileName}");
 
                         // Применяем фильтр Гаусса
                         byte[] processedData = _filterService.ApplyGaussianFilter(
@@ -149,14 +153,14 @@ namespace GaussianImageProcessingSystem.Nodes
                         _totalProcessingTime += processingTime.TotalSeconds;
                         double avgTime = _totalProcessingTime / _tasksCompleted;
 
-                        Log($"   Фильтр применён за {processingTime.TotalSeconds:F2} сек");
-                        Log($"   Статистика: задач выполнено: {_tasksCompleted}, среднее время: {avgTime:F2} сек");
+                        Log($"✅ Фильтр применён за {processingTime.TotalSeconds:F2} сек");
+                        Log($"📊 Статистика: задач={_tasksCompleted}, среднее={avgTime:F2} сек");
 
                         // Сжатие если нужно
                         int originalSize = processedData.Length;
                         if (originalSize > 500000)
                         {
-                            Log($"   Сжатие изображения (было {originalSize / 1024}KB)...");
+                            Log($"📦 Сжатие изображения (было {originalSize / 1024}KB)...");
                             processedData = _filterService.CompressImage(processedData, 75L);
                             Log($"   После сжатия: {processedData.Length / 1024}KB");
                         }
@@ -176,20 +180,20 @@ namespace GaussianImageProcessingSystem.Nodes
                         // Отправляем результат обратно Master узлу
                         SendProcessedImageAsync(responsePacket);
 
-                        Log($"   Обработка завершена: {packet.FileName}", LogLevel.Success);
+                        Log($"✅ ОБРАБОТКА ЗАВЕРШЕНА: {packet.FileName}", LogLevel.Success);
                         Log($"   Общее время: {processingTime.TotalSeconds:F2} сек");
                         Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     }
                     catch (Exception ex)
                     {
-                        Log($"   Ошибка обработки изображения {packet.FileName}: {ex.Message}", LogLevel.Error);
+                        Log($"❌ Ошибка обработки {packet.FileName}: {ex.Message}", LogLevel.Error);
                         Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     }
                 });
             }
             catch (Exception ex)
             {
-                Log($"   Ошибка обработки запроса: {ex.Message}", LogLevel.Error);
+                Log($"❌ Ошибка обработки запроса: {ex.Message}", LogLevel.Error);
             }
         }
 
@@ -203,7 +207,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 string packetJson = JsonConvert.SerializeObject(packet);
                 byte[] packetData = System.Text.Encoding.UTF8.GetBytes(packetJson);
 
-                Log($"   Отправка результата Master узлу...");
+                Log($"📤 Отправка результата Master узлу...");
 
                 // Отправляем статистику перед результатом
                 await SendStatisticsToMasterAsync();
@@ -211,23 +215,25 @@ namespace GaussianImageProcessingSystem.Nodes
                 NetworkMessage message = new NetworkMessage
                 {
                     Type = MessageType.ImageResponse,
-                    Data = packetData
+                    Data = packetData,
+                    SenderIp = "127.0.0.1",
+                    SenderPort = _tcpService.Port
                 };
 
                 bool sent = await _tcpService.SendMessageAsync(message, _masterConnection);
 
                 if (sent)
                 {
-                    Log($"   Результат успешно отправлен Master узлу", LogLevel.Success);
+                    Log($"✅ Результат отправлен Master узлу", LogLevel.Success);
                 }
                 else
                 {
-                    Log($"   Не удалось отправить результат {packet.FileName}", LogLevel.Error);
+                    Log($"❌ Не удалось отправить результат {packet.FileName}", LogLevel.Error);
                 }
             }
             catch (Exception ex)
             {
-                Log($"   Ошибка отправки результата: {ex.Message}", LogLevel.Error);
+                Log($"❌ Ошибка отправки результата: {ex.Message}", LogLevel.Error);
             }
         }
 
@@ -242,6 +248,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 {
                     Port = _tcpService.Port,
                     TasksCompleted = _tasksCompleted,
+                    TotalProcessingTime = _totalProcessingTime,
                     AverageProcessingTime = _tasksCompleted > 0 ? _totalProcessingTime / _tasksCompleted : 0
                 };
 
@@ -251,14 +258,16 @@ namespace GaussianImageProcessingSystem.Nodes
                 NetworkMessage message = new NetworkMessage
                 {
                     Type = MessageType.SlaveStatistics,
-                    Data = statsData
+                    Data = statsData,
+                    SenderIp = "127.0.0.1",
+                    SenderPort = _tcpService.Port
                 };
 
                 await _tcpService.SendMessageAsync(message, _masterConnection);
             }
             catch (Exception ex)
             {
-                Log($"Ошибка отправки статистики: {ex.Message}", LogLevel.Error);
+                Log($"❌ Ошибка отправки статистики: {ex.Message}", LogLevel.Error);
             }
         }
 
