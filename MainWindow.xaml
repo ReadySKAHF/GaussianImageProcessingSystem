@@ -1,0 +1,331 @@
+﻿<Window x:Class="GaussianImageProcessingSystem.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:GaussianImageProcessingSystem.ViewModels"
+        xmlns:converters="clr-namespace:GaussianImageProcessingSystem.Converters"
+        mc:Ignorable="d"
+        Title="TCP Master-Slave система с фильтром Гаусса" 
+        Height="750" Width="1300"
+        WindowStartupLocation="CenterScreen"
+        Background="#F5F5F5">
+
+    <Window.DataContext>
+        <local:MainViewModel/>
+    </Window.DataContext>
+
+    <Window.Resources>
+        <converters:StringContainsConverter x:Key="StringContainsConverter"/>
+
+        <!-- Стили кнопок -->
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect ShadowDepth="2" BlurRadius="4" Opacity="0.3"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="#CCCCCC"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="BorderBrush" Value="#CCCCCC"/>
+        </Style>
+
+        <Style TargetType="Label">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
+
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="10"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect ShadowDepth="1" BlurRadius="5" Opacity="0.2"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Панель управления -->
+        <GroupBox Header="⚙️ Конфигурация узла" Grid.Row="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="150"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Строка 1 -->
+                <Label Grid.Row="0" Grid.Column="0" Content="Тип узла:"/>
+                <ComboBox Grid.Row="0" Grid.Column="1" 
+                         ItemsSource="{Binding NodeTypes}" 
+                         SelectedItem="{Binding SelectedNodeType}"
+                         IsEnabled="{Binding CanStart}"/>
+
+                <Label Grid.Row="0" Grid.Column="2" Content="Локальный порт:"/>
+                <TextBox Grid.Row="0" Grid.Column="3" 
+                        Text="{Binding LocalPort}"
+                        IsEnabled="{Binding CanStart}"/>
+
+                <!-- Строка 2 -->
+                <Label Grid.Row="1" Grid.Column="0" Content="Master IP:"/>
+                <TextBox Grid.Row="1" Grid.Column="1" 
+                        Text="{Binding MasterIp}"
+                        IsEnabled="{Binding CanStart}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsClientNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsSlaveNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <Label Grid.Row="1" Grid.Column="2" Content="Master порт:">
+                    <Label.Style>
+                        <Style TargetType="Label" BasedOn="{StaticResource {x:Type Label}}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsClientNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsSlaveNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Label.Style>
+                </Label>
+                <TextBox Grid.Row="1" Grid.Column="3" 
+                        Text="{Binding MasterPort}"
+                        IsEnabled="{Binding CanStart}">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsClientNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsSlaveNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- Кнопки управления -->
+                <StackPanel Grid.Row="0" Grid.Column="4" Grid.RowSpan="2" 
+                           Orientation="Vertical" VerticalAlignment="Center">
+                    <Button Content="▶ Запустить" Command="{Binding StartNodeCommand}"
+                           Background="#4CAF50" Foreground="White"
+                           IsEnabled="{Binding CanStart}"/>
+                    <Button Content="⏸ Остановить" Command="{Binding StopNodeCommand}"
+                           Background="#f44336" Foreground="White"
+                           IsEnabled="{Binding CanStop}"/>
+                </StackPanel>
+
+                <!-- Кнопки для Client -->
+                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" 
+                           Orientation="Horizontal" HorizontalAlignment="Left"
+                           Margin="0,10,0,0">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsClientNode}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+
+                    <Button Content="📁 Загрузить изображения" Command="{Binding LoadImagesCommand}"
+                           Background="#2196F3" Foreground="White"/>
+                    <Button Content="📤 Отправить на обработку" Command="{Binding SendImagesCommand}"
+                           Background="#FF9800" Foreground="White"/>
+                    <Button Content="💾 Сохранить результаты" Command="{Binding SaveProcessedImagesCommand}"
+                           Background="#9C27B0" Foreground="White"/>
+                </StackPanel>
+            </Grid>
+        </GroupBox>
+
+        <!-- Основная рабочая область -->
+        <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Журнал событий -->
+            <GroupBox Header="📋 Журнал событий" Grid.Column="0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" BorderBrush="#DDDDDD" BorderThickness="1" 
+                            Background="#FAFAFA" CornerRadius="3">
+                        <ListBox ItemsSource="{Binding LogMessages}" 
+                                FontFamily="Consolas" FontSize="11"
+                                ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                BorderThickness="0" Background="Transparent">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="5,2"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Path=., Converter={StaticResource StringContainsConverter}, ConverterParameter='ОШИБКА'}" Value="True">
+                                            <Setter Property="Foreground" Value="#D32F2F"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Path=., Converter={StaticResource StringContainsConverter}, ConverterParameter='УСПЕХ'}" Value="True">
+                                            <Setter Property="Foreground" Value="#388E3C"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+                    </Border>
+
+                    <Button Grid.Row="1" Content="🗑️ Очистить журнал" 
+                           Command="{Binding ClearLogsCommand}"
+                           HorizontalAlignment="Right"
+                           Background="#757575" Foreground="White"/>
+                </Grid>
+            </GroupBox>
+
+            <!-- Галерея изображений -->
+            <GroupBox Header="🖼️ Изображения" Grid.Column="1">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Images}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E0E0E0" BorderThickness="1" 
+                                       Margin="5" Padding="15" CornerRadius="8"
+                                       Background="White">
+                                    <Border.Effect>
+                                        <DropShadowEffect ShadowDepth="2" BlurRadius="6" Opacity="0.2"/>
+                                    </Border.Effect>
+
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                                            <TextBlock Text="📄 " FontSize="16" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding FileName}" 
+                                                      FontWeight="Bold" FontSize="14" 
+                                                      VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <Grid Grid.Row="1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Оригинал -->
+                                            <StackPanel Grid.Column="0" Margin="5">
+                                                <Border Background="#2196F3" CornerRadius="3" Padding="5" Margin="0,0,0,8">
+                                                    <TextBlock Text="Оригинал" FontWeight="SemiBold" 
+                                                              Foreground="White"
+                                                              HorizontalAlignment="Center"/>
+                                                </Border>
+                                                <Border BorderBrush="#BDBDBD" BorderThickness="2" CornerRadius="4">
+                                                    <Image Source="{Binding OriginalImage}" 
+                                                          MaxHeight="250" Stretch="Uniform"/>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- Обработанное -->
+                                            <StackPanel Grid.Column="1" Margin="5">
+                                                <Border Background="#4CAF50" CornerRadius="3" Padding="5" Margin="0,0,0,8">
+                                                    <TextBlock Text="Фильтр Гаусса" FontWeight="SemiBold" 
+                                                              Foreground="White"
+                                                              HorizontalAlignment="Center"/>
+                                                </Border>
+                                                <Border BorderBrush="#BDBDBD" BorderThickness="2" CornerRadius="4">
+                                                    <Grid>
+                                                        <Image Source="{Binding ProcessedImage}" 
+                                                              MaxHeight="250" Stretch="Uniform"/>
+                                                        <Border Background="#F5F5F5" Opacity="0.9"
+                                                               CornerRadius="4">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasProcessedImage}" Value="False">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="{Binding StatusText}" 
+                                                                      VerticalAlignment="Center" 
+                                                                      HorizontalAlignment="Center"
+                                                                      FontSize="16" FontWeight="Bold"
+                                                                      Foreground="#757575"/>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </GroupBox>
+        </Grid>
+    </Grid>
+</Window>
