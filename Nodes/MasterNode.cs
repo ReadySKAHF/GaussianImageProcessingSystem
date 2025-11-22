@@ -5,9 +5,6 @@ using Newtonsoft.Json;
 
 namespace GaussianImageProcessingSystem.Nodes
 {
-    /// <summary>
-    /// Master узел для распределения задач с использованием Round Robin
-    /// </summary>
     public class MasterNode : NodeBase
     {
         private List<SlaveInfo> _registeredSlaves;
@@ -20,8 +17,8 @@ namespace GaussianImageProcessingSystem.Nodes
         private int _totalTasksCompleted = 0;
         private DateTime _firstTaskTime;
         private DateTime _lastTaskTime;
+        private int _filterSize = 15;
 
-        // Для Round Robin
         private int _currentSlaveIndex = 0;
         private readonly object _slaveSelectionLock = new object();
 
@@ -76,9 +73,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Обработка регистрации Slave узла
-        /// </summary>
         private void HandleSlaveRegistration(MessageReceivedEventArgs e)
         {
             try
@@ -128,9 +122,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Обработка запроса на обработку изображения от клиента
-        /// </summary>
         private void HandleImageRequest(MessageReceivedEventArgs e)
         {
             try
@@ -149,6 +140,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 if (_totalTasksReceived == 1)
                 {
                     _firstTaskTime = DateTime.Now;
+                    _filterSize = packet.FilterSize;
                 }
 
                 Log($"");
@@ -203,9 +195,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Выбор Slave узла по алгоритму Round Robin
-        /// </summary>
         private SlaveInfo SelectSlaveRoundRobin()
         {
             lock (_slaveSelectionLock)
@@ -233,9 +222,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Назначить задачу на Slave
-        /// </summary>
         private async void AssignTaskToSlave(PendingTask task, SlaveInfo slave)
         {
             string slaveKey = $"{slave.IpAddress}:{slave.Port}";
@@ -273,9 +259,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Обработка статистики от Slave
-        /// </summary>
         private void HandleSlaveStatistics(MessageReceivedEventArgs e)
         {
             try
@@ -291,9 +274,6 @@ namespace GaussianImageProcessingSystem.Nodes
                     slave.TasksCompleted = (int)stats.TasksCompleted;
                     slave.TotalProcessingTime = (double)stats.TotalProcessingTime;
                     slave.AverageProcessingTime = (double)stats.AverageProcessingTime;
-
-                    int slaveNumber = _registeredSlaves.FindIndex(s => s.Port == port) + 1;
-                    Log($"Статистика Slave #{slaveNumber}: задач={slave.TasksCompleted}, среднее={slave.AverageProcessingTime:F2} сек");
                 }
             }
             catch (Exception ex)
@@ -302,9 +282,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Обработка ответа от Slave узла
-        /// </summary>
         private async void HandleImageResponse(MessageReceivedEventArgs e)
         {
             try
@@ -374,9 +351,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Обработать очередь задач
-        /// </summary>
         private void ProcessTaskQueue()
         {
             while (_taskQueue.Count > 0)
@@ -397,9 +371,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Показать статус всех Slave узлов
-        /// </summary>
         private void ShowSlaveStatus()
         {
             Log("СТАТУС ВСЕХ SLAVE УЗЛОВ");
@@ -427,95 +398,22 @@ namespace GaussianImageProcessingSystem.Nodes
             Log($"Всего: {_registeredSlaves.Count}  |  Занято: {busyCount}  |  Свободно: {freeCount}");
         }
 
-        /// <summary>
-        /// Показать итоговую статистику
-        /// </summary>
         private void ShowFinalStatistics()
         {
             TimeSpan totalTime = _lastTaskTime - _firstTaskTime;
             double avgTimePerTask = _totalTasksCompleted > 0 ? totalTime.TotalSeconds / _totalTasksCompleted : 0;
-            double throughput = totalTime.TotalSeconds > 0 ? _totalTasksCompleted / totalTime.TotalSeconds : 0;
 
             Log($"");
-            Log($"═══════════════════════════════════════════════════════════════");
-            Log($"                   ВСЕ ЗАДАЧИ ЗАВЕРШЕНЫ!                       ");
-            Log($"═══════════════════════════════════════════════════════════════");
+            Log($"═══════════════════════════════════════════════════════");
+            Log($"             ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ!                     ");
+            Log($"═══════════════════════════════════════════════════════");
             Log($"");
-            Log($"╔══════════════════════════════════════════════════════════════╗");
-            Log($"║             ИТОГОВАЯ СТАТИСТИКА ПРОИЗВОДИТЕЛЬНОСТИ           ║");
-            Log($"╚══════════════════════════════════════════════════════════════╝");
+            Log($"Общее время выполнения: {totalTime.TotalSeconds:F2} сек");
+            Log($"Среднее время на задачу: {avgTimePerTask:F2} сек");
+            Log($"Количество Slave узлов: {_registeredSlaves.Count}");
+            Log($"Размер фильтра Гаусса: {_filterSize}x{_filterSize}");
             Log($"");
-            Log($"┌──────────────────────────────────────────────────────────────┐");
-            Log($"│ ОБЩИЕ ПОКАЗАТЕЛИ                                             │");
-            Log($"├──────────────────────────────────────────────────────────────┤");
-            Log($"│ Всего задач обработано:      {_totalTasksCompleted,4}                         │");
-            Log($"│ Количество Slave узлов:      {_registeredSlaves.Count,4}                         │");
-            Log($"│ Общее время обработки:       {totalTime.TotalSeconds,7:F2} сек                 │");
-            Log($"│ Среднее время на задачу:     {avgTimePerTask,7:F2} сек                 │");
-            Log($"│ Производительность:          {throughput,7:F2} задач/сек            │");
-            Log($"└──────────────────────────────────────────────────────────────┘");
-            Log($"");
-            Log($"┌──────────────────────────────────────────────────────────────┐");
-            Log($"│ ПРОИЗВОДИТЕЛЬНОСТЬ SLAVE УЗЛОВ (Round Robin)                 │");
-            Log($"├──────────────────────────────────────────────────────────────┤");
-
-            for (int i = 0; i < _registeredSlaves.Count; i++)
-            {
-                var slave = _registeredSlaves[i];
-                double percentage = _totalTasksCompleted > 0 ?
-                    (slave.TasksCompleted * 100.0 / _totalTasksCompleted) : 0;
-
-                string bar = new string('█', Math.Min((int)(percentage / 5), 20));
-
-                Log($"│                                                              │");
-                Log($"│ Slave #{i + 1} (порт {slave.Port}):                                  │");
-                Log($"│   Задач обработано:  {slave.TasksCompleted,4} ({percentage,5:F1}%)                        │");
-                Log($"│   Среднее время:     {slave.AverageProcessingTime,7:F2} сек/задача                  │");
-                Log($"│   Нагрузка: {bar,-20}                         │");
-            }
-
-            Log($"└──────────────────────────────────────────────────────────────┘");
-            Log($"");
-
-            // Эффективность балансировки
-            double idealPercentage = 100.0 / _registeredSlaves.Count;
-            double maxDeviation = _registeredSlaves
-                .Select(s => Math.Abs((s.TasksCompleted * 100.0 / _totalTasksCompleted) - idealPercentage))
-                .Max();
-
-            Log($"┌──────────────────────────────────────────────────────────────┐");
-            Log($"│ ЭФФЕКТИВНОСТЬ БАЛАНСИРОВКИ (Round Robin)                     │");
-            Log($"├──────────────────────────────────────────────────────────────┤");
-            Log($"│ Идеальное распределение:  {idealPercentage,6:F1}% на каждый Slave           │");
-            Log($"│ Максимальное отклонение:  {maxDeviation,6:F1}%                             │");
-            Log($"│                                                              │");
-
-            if (maxDeviation < 5)
-            {
-                Log($"│ Оценка балансировки:      ⭐⭐⭐ ОТЛИЧНО!                  │");
-            }
-            else if (maxDeviation < 10)
-            {
-                Log($"│ Оценка балансировки:      ⭐⭐ ХОРОШО                      │");
-            }
-            else
-            {
-                Log($"│ Оценка балансировки:      ⭐ УДОВЛЕТВОРИТЕЛЬНО            │");
-            }
-
-            Log($"└──────────────────────────────────────────────────────────────┘");
-            Log($"");
-
-            // Временная шкала
-            Log($"┌──────────────────────────────────────────────────────────────┐");
-            Log($"│ ВРЕМЕННАЯ ШКАЛА                                              │");
-            Log($"├──────────────────────────────────────────────────────────────┤");
-            Log($"│ Начало обработки:         {_firstTaskTime:HH:mm:ss.fff}                 │");
-            Log($"│ Окончание обработки:      {_lastTaskTime:HH:mm:ss.fff}                 │");
-            Log($"│ Продолжительность:        {totalTime.Hours:D2}:{totalTime.Minutes:D2}:{totalTime.Seconds:D2}.{totalTime.Milliseconds:D3}          │");
-            Log($"└──────────────────────────────────────────────────────────────┘");
-            Log($"");
-            Log($"═══════════════════════════════════════════════════════════════");
+            Log($"═══════════════════════════════════════════════════════");
         }
 
         private async void SendAcknowledgmentAsync(TcpClient client)
@@ -530,9 +428,6 @@ namespace GaussianImageProcessingSystem.Nodes
         }
     }
 
-    /// <summary>
-    /// Информация о Slave узле
-    /// </summary>
     public class SlaveInfo
     {
         public string SlaveId { get; set; }
@@ -544,9 +439,6 @@ namespace GaussianImageProcessingSystem.Nodes
         public double AverageProcessingTime { get; set; }
     }
 
-    /// <summary>
-    /// Информация о запросе клиента
-    /// </summary>
     public class ClientRequestInfo
     {
         public string ClientIp { get; set; }
@@ -556,9 +448,6 @@ namespace GaussianImageProcessingSystem.Nodes
         public TcpClient Client { get; set; }
     }
 
-    /// <summary>
-    /// Задача в очереди
-    /// </summary>
     public class PendingTask
     {
         public NetworkMessage Message { get; set; }

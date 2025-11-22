@@ -5,6 +5,8 @@ VisualStudioVersion = 17.11.35327.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GaussianImageProcessingSystem", "GaussianImageProcessingSystem.csproj", "{98370EB9-D02F-4A71-8E35-63F0A1128432}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GaussianImageProcessingSystem.Tests", "..\GaussianImageProcessingSystem.Tests\GaussianImageProcessingSystem.Tests.csproj", "{9F5AECF9-3F73-2224-0F54-BD5134F79BFE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{98370EB9-D02F-4A71-8E35-63F0A1128432}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{98370EB9-D02F-4A71-8E35-63F0A1128432}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{98370EB9-D02F-4A71-8E35-63F0A1128432}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F5AECF9-3F73-2224-0F54-BD5134F79BFE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F5AECF9-3F73-2224-0F54-BD5134F79BFE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F5AECF9-3F73-2224-0F54-BD5134F79BFE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F5AECF9-3F73-2224-0F54-BD5134F79BFE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

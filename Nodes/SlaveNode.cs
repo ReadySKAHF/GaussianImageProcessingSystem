@@ -5,9 +5,6 @@ using Newtonsoft.Json;
 
 namespace GaussianImageProcessingSystem.Nodes
 {
-    /// <summary>
-    /// Slave узел для обработки изображений
-    /// </summary>
     public class SlaveNode : NodeBase
     {
         private string _masterIp;
@@ -30,9 +27,6 @@ namespace GaussianImageProcessingSystem.Nodes
             await RegisterWithMasterAsync();
         }
 
-        /// <summary>
-        /// Регистрация на Master узле
-        /// </summary>
         private async Task RegisterWithMasterAsync()
         {
             try
@@ -112,9 +106,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Обработка запроса на обработку изображения
-        /// </summary>
         private async void ProcessImageRequestAsync(NetworkMessage message)
         {
             try
@@ -122,13 +113,16 @@ namespace GaussianImageProcessingSystem.Nodes
                 string packetJson = System.Text.Encoding.UTF8.GetString(message.Data);
                 ImagePacket packet = JsonConvert.DeserializeObject<ImagePacket>(packetJson);
 
+                _tasksCompleted++;
+
                 Log($"");
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"НОВАЯ ЗАДАЧА: {packet.FileName}");
+                Log($"ПРИНЯТА ЗАДАЧА #{_tasksCompleted}: {packet.FileName}");
                 Log($"PacketId: {packet.PacketId}");
                 Log($"Размер: {packet.ImageData.Length / 1024}KB");
                 Log($"Разрешение: {packet.Width}x{packet.Height}");
                 Log($"Фильтр: Гаусса {packet.FilterSize}x{packet.FilterSize} (sigma=2.0)");
+                Log($"Начало обработки...");
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
                 await Task.Run(() =>
@@ -136,25 +130,20 @@ namespace GaussianImageProcessingSystem.Nodes
                     try
                     {
                         DateTime startTime = DateTime.Now;
-                        Log($"Начало обработки: {packet.FileName}");
 
-                        // Применяем фильтр Гаусса с указанным размером ядра
                         byte[] processedData = _filterService.ApplyGaussianFilter(
                             packet.ImageData,
                             sigma: 2.0,
-                            kernelSize: packet.FilterSize); // Используем размер из пакета
+                            kernelSize: packet.FilterSize);
 
                         TimeSpan processingTime = DateTime.Now - startTime;
 
-                        // Обновляем статистику
-                        _tasksCompleted++;
                         _totalProcessingTime += processingTime.TotalSeconds;
                         double avgTime = _totalProcessingTime / _tasksCompleted;
 
                         Log($"Фильтр применён за {processingTime.TotalSeconds:F2} сек");
                         Log($"Статистика: задач={_tasksCompleted}, среднее={avgTime:F2} сек");
 
-                        // Сжатие если нужно
                         int originalSize = processedData.Length;
                         if (originalSize > 500000)
                         {
@@ -163,7 +152,6 @@ namespace GaussianImageProcessingSystem.Nodes
                             Log($"После сжатия: {processedData.Length / 1024}KB");
                         }
 
-                        // Создаем пакет с обработанным изображением
                         ImagePacket responsePacket = new ImagePacket
                         {
                             ImageData = processedData,
@@ -173,10 +161,9 @@ namespace GaussianImageProcessingSystem.Nodes
                             Format = packet.Format,
                             PacketId = packet.PacketId,
                             SlavePort = _tcpService.Port,
-                            FilterSize = packet.FilterSize // Сохраняем размер фильтра
+                            FilterSize = packet.FilterSize
                         };
 
-                        // Отправляем результат обратно Master узлу
                         SendProcessedImageAsync(responsePacket);
 
                         Log($"ОБРАБОТКА ЗАВЕРШЕНА: {packet.FileName}", LogLevel.Success);
@@ -196,9 +183,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Отправка обработанного изображения Master узлу
-        /// </summary>
         private async void SendProcessedImageAsync(ImagePacket packet)
         {
             try
@@ -208,7 +192,6 @@ namespace GaussianImageProcessingSystem.Nodes
 
                 Log($"Отправка результата Master узлу...");
 
-                // Отправляем статистику перед результатом
                 await SendStatisticsToMasterAsync();
 
                 NetworkMessage message = new NetworkMessage
@@ -236,9 +219,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Отправка статистики Master узлу
-        /// </summary>
         private async Task SendStatisticsToMasterAsync()
         {
             try
@@ -277,9 +257,6 @@ namespace GaussianImageProcessingSystem.Nodes
         }
     }
 
-    /// <summary>
-    /// Данные регистрации Slave
-    /// </summary>
     public class SlaveRegistrationData
     {
         public string IpAddress { get; set; }

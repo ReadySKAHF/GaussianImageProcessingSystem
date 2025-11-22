@@ -31,14 +31,9 @@ namespace GaussianImageProcessingSystem.Nodes
         public override async void Start()
         {
             base.Start();
-
-            // Подключаемся к Master узлу
             await ConnectToMasterAsync();
         }
 
-        /// <summary>
-        /// Подключение к Master узлу
-        /// </summary>
         private async Task ConnectToMasterAsync()
         {
             try
@@ -73,9 +68,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Загрузка изображений из файлов
-        /// </summary>
         public List<ImageInfo> LoadImages(string[] filePaths)
         {
             List<ImageInfo> images = new List<ImageInfo>();
@@ -96,7 +88,7 @@ namespace GaussianImageProcessingSystem.Nodes
                             Width = bitmap.Width,
                             Height = bitmap.Height,
                             Format = bitmap.RawFormat.ToString(),
-                            FilterSize = 15 // По умолчанию
+                            FilterSize = 15
                         };
 
                         images.Add(info);
@@ -112,9 +104,6 @@ namespace GaussianImageProcessingSystem.Nodes
             return images;
         }
 
-        /// <summary>
-        /// Отправка изображения на Master узел
-        /// </summary>
         public async Task<bool> SendImageAsync(ImageInfo imageInfo)
         {
             try
@@ -132,7 +121,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     Width = imageInfo.Width,
                     Height = imageInfo.Height,
                     Format = imageInfo.Format,
-                    FilterSize = imageInfo.FilterSize // Передаём размер фильтра
+                    FilterSize = imageInfo.FilterSize
                 };
 
                 string packetJson = JsonConvert.SerializeObject(packet);
@@ -176,9 +165,6 @@ namespace GaussianImageProcessingSystem.Nodes
             }
         }
 
-        /// <summary>
-        /// Отправка всех изображений
-        /// </summary>
         public async Task SendImagesAsync(List<ImageInfo> images)
         {
             Log($"");
@@ -223,6 +209,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     if (_pendingImages.TryGetValue(packet.PacketId, out ImageInfo originalInfo))
                     {
                         originalInfo.ProcessedData = packet.ImageData;
+                        originalInfo.IsProcessed = true;
                         ProcessedImages.Add(originalInfo);
                         _pendingImages.Remove(packet.PacketId);
 
@@ -259,9 +246,6 @@ namespace GaussianImageProcessingSystem.Nodes
         }
     }
 
-    /// <summary>
-    /// Информация об изображении
-    /// </summary>
     public class ImageInfo
     {
         public string FileName { get; set; }
@@ -270,12 +254,10 @@ namespace GaussianImageProcessingSystem.Nodes
         public int Width { get; set; }
         public int Height { get; set; }
         public string Format { get; set; }
-        public int FilterSize { get; set; } // Размер фильтра (10, 15, 20)
+        public int FilterSize { get; set; }
+        public bool IsProcessed { get; set; }
     }
 
-    /// <summary>
-    /// Аргументы события обработки изображения
-    /// </summary>
     public class ImageProcessedEventArgs : EventArgs
     {
         public ImageInfo ImageInfo { get; set; }
