@@ -21,12 +21,15 @@ namespace GaussianImageProcessingSystem.ViewModels
         private string _localPort;
         private string _masterIp;
         private string _masterPort;
+        private string _selectedFilterSize;
         private ObservableCollection<string> _logMessages;
         private ObservableCollection<ImageItemViewModel> _images;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
         public ObservableCollection<string> NodeTypes { get; set; }
+        public ObservableCollection<string> FilterSizes { get; set; }
+
         public ObservableCollection<string> LogMessages
         {
             get => _logMessages;
@@ -57,6 +60,16 @@ namespace GaussianImageProcessingSystem.ViewModels
                 OnPropertyChanged(nameof(IsClientNode));
                 OnPropertyChanged(nameof(IsMasterNode));
                 OnPropertyChanged(nameof(IsSlaveNode));
+            }
+        }
+
+        public string SelectedFilterSize
+        {
+            get => _selectedFilterSize;
+            set
+            {
+                _selectedFilterSize = value;
+                OnPropertyChanged(nameof(SelectedFilterSize));
             }
         }
 
@@ -118,10 +131,12 @@ namespace GaussianImageProcessingSystem.ViewModels
         public MainViewModel()
         {
             NodeTypes = new ObservableCollection<string> { "Client", "Master", "Slave" };
+            FilterSizes = new ObservableCollection<string> { "10x10", "15x15", "20x20" };
             LogMessages = new ObservableCollection<string>();
             Images = new ObservableCollection<ImageItemViewModel>();
 
             SelectedNodeType = "Client";
+            SelectedFilterSize = "15x15";
             LocalPort = "5000";
             MasterIp = "127.0.0.1";
             MasterPort = "5001";
@@ -132,6 +147,18 @@ namespace GaussianImageProcessingSystem.ViewModels
             SendImagesCommand = new RelayCommand(SendImages, () => IsClientNode && IsRunning && Images.Any(i => !i.IsProcessed));
             ClearLogsCommand = new RelayCommand(ClearLogs);
             SaveProcessedImagesCommand = new RelayCommand(SaveProcessedImages, () => Images.Any(i => i.IsProcessed));
+        }
+
+        private int GetFilterSizeValue()
+        {
+            if (string.IsNullOrEmpty(SelectedFilterSize))
+                return 15;
+
+            string sizeStr = SelectedFilterSize.Split('x')[0];
+            if (int.TryParse(sizeStr, out int size))
+                return size;
+
+            return 15;
         }
 
         private void StartNode()
@@ -224,7 +251,8 @@ namespace GaussianImageProcessingSystem.ViewModels
                                     OriginalData = imageBytes,
                                     Width = bitmap.Width,
                                     Height = bitmap.Height,
-                                    Format = bitmap.RawFormat.ToString()
+                                    Format = bitmap.RawFormat.ToString(),
+                                    FilterSize = GetFilterSizeValue()
                                 };
 
                                 Images.Add(new ImageItemViewModel
@@ -244,6 +272,7 @@ namespace GaussianImageProcessingSystem.ViewModels
                     }
 
                     AddLog($"Всего загружено изображений: {Images.Count}");
+                    AddLog($"Размер фильтра: {SelectedFilterSize}");
                 }
             }
             catch (Exception ex)
@@ -318,10 +347,11 @@ namespace GaussianImageProcessingSystem.ViewModels
             Application.Current.Dispatcher.Invoke(() =>
             {
                 var imageVm = Images.FirstOrDefault(i => i.FileName == e.ImageInfo.FileName);
-                if (imageVm != null)
+                if (imageVm != null && e.ImageInfo.ProcessedData != null)
                 {
                     imageVm.ProcessedImage = ByteArrayToBitmapImage(e.ImageInfo.ProcessedData);
                     imageVm.IsProcessed = true;
+                    AddLog($"Изображение обработано: {e.ImageInfo.FileName}");
                 }
             });
         }
@@ -342,18 +372,26 @@ namespace GaussianImageProcessingSystem.ViewModels
             if (bytes == null || bytes.Length == 0)
                 return null;
 
-            BitmapImage image = new BitmapImage();
-            using (MemoryStream stream = new MemoryStream(bytes))
+            try
             {
-                stream.Position = 0;
-                image.BeginInit();
-                image.CreateOptions = BitmapCreateOptions.PreservePixelFormat;
-                image.CacheOption = BitmapCacheOption.OnLoad;
-                image.StreamSource = stream;
-                image.EndInit();
+                BitmapImage image = new BitmapImage();
+                using (MemoryStream stream = new MemoryStream(bytes))
+                {
+                    stream.Position = 0;
+                    image.BeginInit();
+                    image.CreateOptions = BitmapCreateOptions.PreservePixelFormat;
+                    image.CacheOption = BitmapCacheOption.OnLoad;
+                    image.StreamSource = stream;
+                    image.EndInit();
+                }
+                image.Freeze();
+                return image;
             }
-            image.Freeze();
-            return image;
+            catch (Exception ex)
+            {
+                AddLog($"Ошибка конвертации изображения: {ex.Message}", true);
+                return null;
+            }
         }
 
         protected void OnPropertyChanged(string propertyName)
@@ -403,11 +441,12 @@ namespace GaussianImageProcessingSystem.ViewModels
                 _isProcessed = value;
                 OnPropertyChanged(nameof(IsProcessed));
                 OnPropertyChanged(nameof(StatusText));
+                OnPropertyChanged(nameof(HasProcessedImage));
             }
         }
 
         public bool HasProcessedImage => ProcessedImage != null;
-        public string StatusText => IsProcessed ? "Обработано (Гаусс)" : "Ожидание";
+        public string StatusText => IsProcessed ? "Обработано" : "Ожидание";
 
         public event PropertyChangedEventHandler PropertyChanged;
 

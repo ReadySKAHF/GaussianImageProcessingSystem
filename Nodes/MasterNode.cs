@@ -86,7 +86,6 @@ namespace GaussianImageProcessingSystem.Nodes
                 string dataJson = System.Text.Encoding.UTF8.GetString(e.Message.Data);
                 SlaveRegistrationData regData = JsonConvert.DeserializeObject<SlaveRegistrationData>(dataJson);
 
-                // Проверяем, не зарегистрирован ли уже этот slave
                 var existingSlave = _registeredSlaves.FirstOrDefault(s =>
                     s.IpAddress == regData.IpAddress && s.Port == regData.Port);
 
@@ -105,7 +104,6 @@ namespace GaussianImageProcessingSystem.Nodes
 
                     _registeredSlaves.Add(slaveInfo);
 
-                    // Сохраняем подключение к Slave
                     string slaveKey = $"{slaveInfo.IpAddress}:{slaveInfo.Port}";
                     _slaveConnections[slaveKey] = e.Client;
                     _slaveBusyStatus[slaveKey] = false;
@@ -116,15 +114,12 @@ namespace GaussianImageProcessingSystem.Nodes
                     Log($"   Всего Slave узлов: {_registeredSlaves.Count}");
                     Log($"═══════════════════════════════════════════════════════");
 
-                    // Отправляем подтверждение
                     SendAcknowledgmentAsync(e.Client);
-
-                    // Обрабатываем очередь задач
                     ProcessTaskQueue();
                 }
                 else
                 {
-                    Log($"⚠️ Slave узел уже зарегистрирован: {regData.IpAddress}:{regData.Port}");
+                    Log($"Slave узел уже зарегистрирован: {regData.IpAddress}:{regData.Port}");
                 }
             }
             catch (Exception ex)
@@ -161,9 +156,9 @@ namespace GaussianImageProcessingSystem.Nodes
                 Log($"   ЗАДАЧА #{_totalTasksReceived}: {packet.FileName}");
                 Log($"   PacketId: {packet.PacketId}");
                 Log($"   Размер: {packet.ImageData.Length / 1024}KB");
+                Log($"   Фильтр: {packet.FilterSize}x{packet.FilterSize}");
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-                // Сохраняем подключение клиента
                 string clientKey = $"{e.Message.SenderIp}:{e.Message.SenderPort}";
                 if (!_clientConnections.ContainsKey(clientKey))
                 {
@@ -189,7 +184,6 @@ namespace GaussianImageProcessingSystem.Nodes
                     ClientInfo = clientInfo
                 };
 
-                // Выбираем Slave по Round Robin
                 SlaveInfo selectedSlave = SelectSlaveRoundRobin();
 
                 if (selectedSlave != null)
@@ -216,7 +210,6 @@ namespace GaussianImageProcessingSystem.Nodes
         {
             lock (_slaveSelectionLock)
             {
-                // Собираем все свободные Slave
                 var freeSlaves = _registeredSlaves
                     .Where(s => !_slaveBusyStatus[$"{s.IpAddress}:{s.Port}"])
                     .ToList();
@@ -224,18 +217,16 @@ namespace GaussianImageProcessingSystem.Nodes
                 if (freeSlaves.Count == 0)
                     return null;
 
-                // Round Robin: выбираем следующий свободный Slave по кругу
                 SlaveInfo selected = freeSlaves[_currentSlaveIndex % freeSlaves.Count];
                 _currentSlaveIndex++;
 
-                // Сбрасываем счетчик при достижении большого значения
                 if (_currentSlaveIndex > 1000000)
                     _currentSlaveIndex = 0;
 
                 int slaveNumber = _registeredSlaves.FindIndex(s =>
                     s.IpAddress == selected.IpAddress && s.Port == selected.Port) + 1;
 
-                Log($"🎯 Round Robin → Slave #{slaveNumber} " +
+                Log($"Round Robin -> Slave #{slaveNumber} " +
                     $"(задач: {selected.TasksCompleted}, среднее: {selected.AverageProcessingTime:F2} сек)");
 
                 return selected;
@@ -267,7 +258,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     int slaveNumber = _registeredSlaves.FindIndex(s =>
                         s.IpAddress == slave.IpAddress && s.Port == slave.Port) + 1;
 
-                    Log($"  ➤ Задача {task.FileName} → Slave #{slaveNumber} ({slave.IpAddress}:{slave.Port})");
+                    Log($"  -> Задача {task.FileName} -> Slave #{slaveNumber} ({slave.IpAddress}:{slave.Port})");
 
                     int busyCount = _slaveBusyStatus.Count(kvp => kvp.Value);
                     int freeCount = _slaveBusyStatus.Count(kvp => !kvp.Value);
@@ -302,7 +293,7 @@ namespace GaussianImageProcessingSystem.Nodes
                     slave.AverageProcessingTime = (double)stats.AverageProcessingTime;
 
                     int slaveNumber = _registeredSlaves.FindIndex(s => s.Port == port) + 1;
-                    Log($"📊 Slave #{slaveNumber}: задач={slave.TasksCompleted}, среднее={slave.AverageProcessingTime:F2} сек");
+                    Log($"Статистика Slave #{slaveNumber}: задач={slave.TasksCompleted}, среднее={slave.AverageProcessingTime:F2} сек");
                 }
             }
             catch (Exception ex)
@@ -330,6 +321,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 Log($"   РЕЗУЛЬТАТ от Slave: {packet.FileName}");
                 Log($"   Размер: {e.Message.Data.Length / 1024}KB");
+                Log($"   Фильтр: {packet.FilterSize}x{packet.FilterSize}");
 
                 if (_pendingRequests.TryGetValue(packet.PacketId, out ClientRequestInfo clientInfo))
                 {
@@ -341,14 +333,12 @@ namespace GaussianImageProcessingSystem.Nodes
                     Log($"      Время обработки: {processingTime.TotalSeconds:F2} сек");
                     Log($"      Обработал: Slave #{slaveNumber}");
 
-                    // Помечаем Slave как свободный
                     if (_slaveBusyStatus.ContainsKey(slaveKey))
                     {
                         _slaveBusyStatus[slaveKey] = false;
-                        Log($"   ✅ Slave #{slaveNumber} теперь СВОБОДЕН!");
+                        Log($"   Slave #{slaveNumber} теперь СВОБОДЕН!");
                     }
 
-                    // Отправляем результат клиенту
                     if (clientInfo.Client != null && clientInfo.Client.Connected)
                     {
                         NetworkMessage clientMessage = new NetworkMessage
@@ -361,7 +351,7 @@ namespace GaussianImageProcessingSystem.Nodes
 
                         if (sent)
                         {
-                            Log($"   ✅ Результат отправлен клиенту");
+                            Log($"   Результат отправлен клиенту");
                         }
                     }
 
@@ -376,7 +366,6 @@ namespace GaussianImageProcessingSystem.Nodes
                     ShowFinalStatistics();
                 }
 
-                // Обрабатываем очередь после освобождения Slave
                 ProcessTaskQueue();
             }
             catch (Exception ex)
@@ -402,7 +391,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 }
 
                 PendingTask task = _taskQueue.Dequeue();
-                Log($"⬆️ Задача {task.FileName} извлечена из очереди (осталось: {_taskQueue.Count})");
+                Log($"Задача {task.FileName} извлечена из очереди (осталось: {_taskQueue.Count})");
 
                 AssignTaskToSlave(task, selectedSlave);
             }
@@ -413,13 +402,11 @@ namespace GaussianImageProcessingSystem.Nodes
         /// </summary>
         private void ShowSlaveStatus()
         {
-            Log("╔═══════════════════════════════════════════════════════╗");
-            Log("║               СТАТУС ВСЕХ SLAVE УЗЛОВ                 ║");
-            Log("╚═══════════════════════════════════════════════════════╝");
+            Log("СТАТУС ВСЕХ SLAVE УЗЛОВ");
 
             if (_registeredSlaves.Count == 0)
             {
-                Log("  ⚠️ Нет зарегистрированных Slave узлов!");
+                Log("  Нет зарегистрированных Slave узлов!");
                 return;
             }
 
@@ -428,7 +415,7 @@ namespace GaussianImageProcessingSystem.Nodes
                 var slave = _registeredSlaves[i];
                 string key = $"{slave.IpAddress}:{slave.Port}";
                 bool isBusy = _slaveBusyStatus.ContainsKey(key) && _slaveBusyStatus[key];
-                string status = isBusy ? "🔴 ЗАНЯТ" : "🟢 СВОБОДЕН";
+                string status = isBusy ? "ЗАНЯТ" : "СВОБОДЕН";
 
                 Log($"  [{i + 1}] {slave.IpAddress}:{slave.Port.ToString().PadRight(5)} - {status}");
                 Log($"      Задач: {slave.TasksCompleted}, Среднее: {slave.AverageProcessingTime:F2} сек");
@@ -437,9 +424,7 @@ namespace GaussianImageProcessingSystem.Nodes
             int busyCount = _slaveBusyStatus.Count(kvp => kvp.Value);
             int freeCount = _slaveBusyStatus.Count(kvp => !kvp.Value);
 
-            Log($"╔═══════════════════════════════════════════════════════╗");
-            Log($"║ Всего: {_registeredSlaves.Count}  |  🔴 Занято: {busyCount}  |  🟢 Свободно: {freeCount}      ║");
-            Log($"╚═══════════════════════════════════════════════════════╝");
+            Log($"Всего: {_registeredSlaves.Count}  |  Занято: {busyCount}  |  Свободно: {freeCount}");
         }
 
         /// <summary>
@@ -448,26 +433,31 @@ namespace GaussianImageProcessingSystem.Nodes
         private void ShowFinalStatistics()
         {
             TimeSpan totalTime = _lastTaskTime - _firstTaskTime;
+            double avgTimePerTask = _totalTasksCompleted > 0 ? totalTime.TotalSeconds / _totalTasksCompleted : 0;
+            double throughput = totalTime.TotalSeconds > 0 ? _totalTasksCompleted / totalTime.TotalSeconds : 0;
 
             Log($"");
-            Log($"╔═══════════════════════════════════════════════════════════════╗");
-            Log($"║                     ВСЕ ЗАДАЧИ ЗАВЕРШЕНЫ!                     ║");
-            Log($"╚═══════════════════════════════════════════════════════════════╝");
+            Log($"═══════════════════════════════════════════════════════════════");
+            Log($"                   ВСЕ ЗАДАЧИ ЗАВЕРШЕНЫ!                       ");
+            Log($"═══════════════════════════════════════════════════════════════");
             Log($"");
-            Log($" Итоговая статистика производительности:");
+            Log($"╔══════════════════════════════════════════════════════════════╗");
+            Log($"║             ИТОГОВАЯ СТАТИСТИКА ПРОИЗВОДИТЕЛЬНОСТИ           ║");
+            Log($"╚══════════════════════════════════════════════════════════════╝");
             Log($"");
-            Log($"┌───────────────────────────────────────────────────────────┐");
-            Log($"│ Общие показатели                                          │");
-            Log($"├───────────────────────────────────────────────────────────┤");
-            Log($"│ Всего задач обработано:     {_totalTasksCompleted}                            │");
-            Log($"│ Количество Slave узлов:     {_registeredSlaves.Count}                            │");
-            Log($"│ Общее время обработки:      {totalTime.TotalSeconds:F2} сек                 │");
-            Log($"│ Среднее время на задачу:    {(totalTime.TotalSeconds / _totalTasksCompleted):F2} сек                 │");
-            Log($"└───────────────────────────────────────────────────────────┘");
+            Log($"┌──────────────────────────────────────────────────────────────┐");
+            Log($"│ ОБЩИЕ ПОКАЗАТЕЛИ                                             │");
+            Log($"├──────────────────────────────────────────────────────────────┤");
+            Log($"│ Всего задач обработано:      {_totalTasksCompleted,4}                         │");
+            Log($"│ Количество Slave узлов:      {_registeredSlaves.Count,4}                         │");
+            Log($"│ Общее время обработки:       {totalTime.TotalSeconds,7:F2} сек                 │");
+            Log($"│ Среднее время на задачу:     {avgTimePerTask,7:F2} сек                 │");
+            Log($"│ Производительность:          {throughput,7:F2} задач/сек            │");
+            Log($"└──────────────────────────────────────────────────────────────┘");
             Log($"");
-            Log($"┌───────────────────────────────────────────────────────────┐");
-            Log($"│     Производительность Slave (Round Robin)                │");
-            Log($"├───────────────────────────────────────────────────────────┤");
+            Log($"┌──────────────────────────────────────────────────────────────┐");
+            Log($"│ ПРОИЗВОДИТЕЛЬНОСТЬ SLAVE УЗЛОВ (Round Robin)                 │");
+            Log($"├──────────────────────────────────────────────────────────────┤");
 
             for (int i = 0; i < _registeredSlaves.Count; i++)
             {
@@ -475,38 +465,57 @@ namespace GaussianImageProcessingSystem.Nodes
                 double percentage = _totalTasksCompleted > 0 ?
                     (slave.TasksCompleted * 100.0 / _totalTasksCompleted) : 0;
 
-                string bar = new string('█', (int)(percentage / 5));
+                string bar = new string('█', Math.Min((int)(percentage / 5), 20));
 
-                Log($"│ Slave #{i + 1} (порт {slave.Port}):                              │");
-                Log($"│   Задач обработано: {slave.TasksCompleted} ({percentage:F1}%)                      │");
-                Log($"│   Среднее время: {slave.AverageProcessingTime:F2} сек/задача                    │");
-                Log($"│   Нагрузка: {bar}                                     │");
-                Log($"├───────────────────────────────────────────────────────────┤");
+                Log($"│                                                              │");
+                Log($"│ Slave #{i + 1} (порт {slave.Port}):                                  │");
+                Log($"│   Задач обработано:  {slave.TasksCompleted,4} ({percentage,5:F1}%)                        │");
+                Log($"│   Среднее время:     {slave.AverageProcessingTime,7:F2} сек/задача                  │");
+                Log($"│   Нагрузка: {bar,-20}                         │");
             }
 
-            Log($"└───────────────────────────────────────────────────────────┘");
+            Log($"└──────────────────────────────────────────────────────────────┘");
+            Log($"");
 
-            // Показываем эффективность распределения
+            // Эффективность балансировки
             double idealPercentage = 100.0 / _registeredSlaves.Count;
             double maxDeviation = _registeredSlaves
                 .Select(s => Math.Abs((s.TasksCompleted * 100.0 / _totalTasksCompleted) - idealPercentage))
                 .Max();
 
-            Log($"");
-            Log($"┌───────────────────────────────────────────────────────────┐");
-            Log($"│ Эффективность Round Robin                                 │");
-            Log($"├───────────────────────────────────────────────────────────┤");
-            Log($"│ Идеальное распределение:    {idealPercentage:F1}% на каждый Slave        │");
-            Log($"│ Максимальное отклонение:    {maxDeviation:F1}%                           │");
+            Log($"┌──────────────────────────────────────────────────────────────┐");
+            Log($"│ ЭФФЕКТИВНОСТЬ БАЛАНСИРОВКИ (Round Robin)                     │");
+            Log($"├──────────────────────────────────────────────────────────────┤");
+            Log($"│ Идеальное распределение:  {idealPercentage,6:F1}% на каждый Slave           │");
+            Log($"│ Максимальное отклонение:  {maxDeviation,6:F1}%                             │");
+            Log($"│                                                              │");
 
             if (maxDeviation < 5)
-                Log($"│ Оценка:                     ⭐⭐⭐ Отлично!               │");
+            {
+                Log($"│ Оценка балансировки:      ⭐⭐⭐ ОТЛИЧНО!                  │");
+            }
             else if (maxDeviation < 10)
-                Log($"│ Оценка:                     ⭐⭐ Хорошо                  │");
+            {
+                Log($"│ Оценка балансировки:      ⭐⭐ ХОРОШО                      │");
+            }
             else
-                Log($"│ Оценка:                     ⭐ Удовлетворительно         │");
+            {
+                Log($"│ Оценка балансировки:      ⭐ УДОВЛЕТВОРИТЕЛЬНО            │");
+            }
 
-            Log($"└───────────────────────────────────────────────────────────┘");
+            Log($"└──────────────────────────────────────────────────────────────┘");
+            Log($"");
+
+            // Временная шкала
+            Log($"┌──────────────────────────────────────────────────────────────┐");
+            Log($"│ ВРЕМЕННАЯ ШКАЛА                                              │");
+            Log($"├──────────────────────────────────────────────────────────────┤");
+            Log($"│ Начало обработки:         {_firstTaskTime:HH:mm:ss.fff}                 │");
+            Log($"│ Окончание обработки:      {_lastTaskTime:HH:mm:ss.fff}                 │");
+            Log($"│ Продолжительность:        {totalTime.Hours:D2}:{totalTime.Minutes:D2}:{totalTime.Seconds:D2}.{totalTime.Milliseconds:D3}          │");
+            Log($"└──────────────────────────────────────────────────────────────┘");
+            Log($"");
+            Log($"═══════════════════════════════════════════════════════════════");
         }
 
         private async void SendAcknowledgmentAsync(TcpClient client)

@@ -44,33 +44,32 @@ namespace GaussianImageProcessingSystem.Nodes
             try
             {
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"🔗 ПОДКЛЮЧЕНИЕ К MASTER УЗЛУ");
-                Log($"   Master адрес: {_masterIp}:{_masterPort}");
-                Log($"   Локальный порт: {_tcpService.Port}");
+                Log($"ПОДКЛЮЧЕНИЕ К MASTER УЗЛУ");
+                Log($"Master адрес: {_masterIp}:{_masterPort}");
+                Log($"Локальный порт: {_tcpService.Port}");
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
                 _masterConnection = await _tcpService.ConnectAsync(_masterIp, _masterPort);
 
                 if (_masterConnection != null && _masterConnection.Connected)
                 {
-                    Log($"✅ УСПЕШНО ПОДКЛЮЧЕН К MASTER!", LogLevel.Success);
-                    Log($"   Начинаю прослушивание ответов от Master...");
+                    Log($"УСПЕШНО ПОДКЛЮЧЕН К MASTER!", LogLevel.Success);
+                    Log($"Начинаю прослушивание ответов от Master...");
 
-                    // КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: начинаем читать ответы от Master
                     _tcpService.StartReceivingAsync(_masterConnection);
 
-                    Log($"   Готов к отправке изображений");
+                    Log($"Готов к отправке изображений");
                     Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 }
                 else
                 {
-                    Log($"❌ Не удалось подключиться к Master узлу", LogLevel.Error);
-                    Log($"   Убедитесь, что Master запущен на {_masterIp}:{_masterPort}");
+                    Log($"Не удалось подключиться к Master узлу", LogLevel.Error);
+                    Log($"Убедитесь, что Master запущен на {_masterIp}:{_masterPort}");
                 }
             }
             catch (Exception ex)
             {
-                Log($"❌ Ошибка подключения к Master: {ex.Message}", LogLevel.Error);
+                Log($"Ошибка подключения к Master: {ex.Message}", LogLevel.Error);
             }
         }
 
@@ -96,16 +95,17 @@ namespace GaussianImageProcessingSystem.Nodes
                             OriginalData = imageBytes,
                             Width = bitmap.Width,
                             Height = bitmap.Height,
-                            Format = bitmap.RawFormat.ToString()
+                            Format = bitmap.RawFormat.ToString(),
+                            FilterSize = 15 // По умолчанию
                         };
 
                         images.Add(info);
-                        Log($"📁 Загружено: {info.FileName} ({info.Width}x{info.Height})");
+                        Log($"Загружено: {info.FileName} ({info.Width}x{info.Height})");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log($"❌ Ошибка загрузки {filePath}: {ex.Message}", LogLevel.Error);
+                    Log($"Ошибка загрузки {filePath}: {ex.Message}", LogLevel.Error);
                 }
             }
 
@@ -121,7 +121,7 @@ namespace GaussianImageProcessingSystem.Nodes
             {
                 if (_masterConnection == null || !_masterConnection.Connected)
                 {
-                    Log("❌ Нет подключения к Master узлу", LogLevel.Error);
+                    Log("Нет подключения к Master узлу", LogLevel.Error);
                     return false;
                 }
 
@@ -131,7 +131,8 @@ namespace GaussianImageProcessingSystem.Nodes
                     FileName = imageInfo.FileName,
                     Width = imageInfo.Width,
                     Height = imageInfo.Height,
-                    Format = imageInfo.Format
+                    Format = imageInfo.Format,
+                    FilterSize = imageInfo.FilterSize // Передаём размер фильтра
                 };
 
                 string packetJson = JsonConvert.SerializeObject(packet);
@@ -148,28 +149,29 @@ namespace GaussianImageProcessingSystem.Nodes
                 _pendingImages[packet.PacketId] = imageInfo;
 
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                Log($"📤 ОТПРАВКА: {imageInfo.FileName}");
-                Log($"   PacketId: {packet.PacketId}");
-                Log($"   Размер: {imageInfo.OriginalData.Length / 1024}KB");
+                Log($"ОТПРАВКА: {imageInfo.FileName}");
+                Log($"PacketId: {packet.PacketId}");
+                Log($"Размер: {imageInfo.OriginalData.Length / 1024}KB");
+                Log($"Фильтр: {imageInfo.FilterSize}x{imageInfo.FilterSize}");
 
                 bool sent = await _tcpService.SendMessageAsync(message, _masterConnection);
 
                 if (sent)
                 {
-                    Log($"✅ Изображение отправлено на Master");
-                    Log($"   Ожидание обработки...");
+                    Log($"Изображение отправлено на Master");
+                    Log($"Ожидание обработки...");
                     Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     return true;
                 }
                 else
                 {
-                    Log($"❌ Не удалось отправить {imageInfo.FileName}", LogLevel.Error);
+                    Log($"Не удалось отправить {imageInfo.FileName}", LogLevel.Error);
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                Log($"❌ Ошибка отправки: {ex.Message}", LogLevel.Error);
+                Log($"Ошибка отправки: {ex.Message}", LogLevel.Error);
                 return false;
             }
         }
@@ -180,10 +182,10 @@ namespace GaussianImageProcessingSystem.Nodes
         public async Task SendImagesAsync(List<ImageInfo> images)
         {
             Log($"");
-            Log($"╔═══════════════════════════════════════════════════════╗");
-            Log($"║           НАЧАЛО МАССОВОЙ ОТПРАВКИ ИЗОБРАЖЕНИЙ        ║");
-            Log($"╚═══════════════════════════════════════════════════════╝");
-            Log($"   Всего изображений: {images.Count}");
+            Log($"НАЧАЛО МАССОВОЙ ОТПРАВКИ ИЗОБРАЖЕНИЙ");
+            Log($"Всего изображений: {images.Count}");
+            if (images.Any())
+                Log($"Размер фильтра: {images[0].FilterSize}x{images[0].FilterSize}");
             Log($"");
 
             int successCount = 0;
@@ -193,14 +195,12 @@ namespace GaussianImageProcessingSystem.Nodes
                 if (sent)
                     successCount++;
 
-                await Task.Delay(100); // Небольшая задержка между отправками
+                await Task.Delay(100);
             }
 
             Log($"");
-            Log($"╔═══════════════════════════════════════════════════════╗");
-            Log($"║              ОТПРАВКА ЗАВЕРШЕНА                       ║");
-            Log($"╚═══════════════════════════════════════════════════════╝");
-            Log($"   Отправлено успешно: {successCount}/{images.Count}");
+            Log($"ОТПРАВКА ЗАВЕРШЕНА");
+            Log($"Отправлено успешно: {successCount}/{images.Count}");
             Log($"");
         }
 
@@ -215,9 +215,10 @@ namespace GaussianImageProcessingSystem.Nodes
 
                     Log($"");
                     Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                    Log($"📥 ПОЛУЧЕН РЕЗУЛЬТАТ: {packet.FileName}");
-                    Log($"   PacketId: {packet.PacketId}");
-                    Log($"   Размер: {packet.ImageData.Length / 1024}KB");
+                    Log($"ПОЛУЧЕН РЕЗУЛЬТАТ: {packet.FileName}");
+                    Log($"PacketId: {packet.PacketId}");
+                    Log($"Размер: {packet.ImageData.Length / 1024}KB");
+                    Log($"Фильтр: {packet.FilterSize}x{packet.FilterSize}");
 
                     if (_pendingImages.TryGetValue(packet.PacketId, out ImageInfo originalInfo))
                     {
@@ -225,8 +226,8 @@ namespace GaussianImageProcessingSystem.Nodes
                         ProcessedImages.Add(originalInfo);
                         _pendingImages.Remove(packet.PacketId);
 
-                        Log($"✅ ОБРАБОТКА ЗАВЕРШЕНА!", LogLevel.Success);
-                        Log($"   Осталось в очереди: {_pendingImages.Count}");
+                        Log($"ОБРАБОТКА ЗАВЕРШЕНА!", LogLevel.Success);
+                        Log($"Осталось в очереди: {_pendingImages.Count}");
                         Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
                         ImageProcessed?.Invoke(this, new ImageProcessedEventArgs { ImageInfo = originalInfo });
@@ -234,22 +235,20 @@ namespace GaussianImageProcessingSystem.Nodes
                         if (_pendingImages.Count == 0)
                         {
                             Log($"");
-                            Log($"╔═══════════════════════════════════════════════════════╗");
-                            Log($"║         ВСЕ ИЗОБРАЖЕНИЯ УСПЕШНО ОБРАБОТАНЫ!          ║");
-                            Log($"╚═══════════════════════════════════════════════════════╝");
-                            Log($"   Всего обработано: {ProcessedImages.Count}");
+                            Log($"ВСЕ ИЗОБРАЖЕНИЯ УСПЕШНО ОБРАБОТАНЫ!");
+                            Log($"Всего обработано: {ProcessedImages.Count}");
                             Log($"");
                         }
                     }
                     else
                     {
-                        Log($"⚠️ Получен ответ для неизвестного PacketId: {packet.PacketId}", LogLevel.Warning);
+                        Log($"Получен ответ для неизвестного PacketId: {packet.PacketId}", LogLevel.Warning);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log($"❌ Ошибка обработки ответа: {ex.Message}", LogLevel.Error);
+                Log($"Ошибка обработки ответа: {ex.Message}", LogLevel.Error);
             }
         }
 
@@ -271,6 +270,7 @@ namespace GaussianImageProcessingSystem.Nodes
         public int Width { get; set; }
         public int Height { get; set; }
         public string Format { get; set; }
+        public int FilterSize { get; set; } // Размер фильтра (10, 15, 20)
     }
 
     /// <summary>

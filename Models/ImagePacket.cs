@@ -41,12 +41,18 @@ namespace GaussianImageProcessingSystem.Models
         /// </summary>
         public int SlavePort { get; set; }
 
+        /// <summary>
+        /// Размер ядра фильтра Гаусса (например, 10, 15, 20)
+        /// </summary>
+        public int FilterSize { get; set; }
+
         public ImagePacket()
         {
             PacketId = Guid.NewGuid().ToString();
+            FilterSize = 15; // Значение по умолчанию
         }
 
-        public ImagePacket(byte[] imageData, string fileName, int width, int height, string format)
+        public ImagePacket(byte[] imageData, string fileName, int width, int height, string format, int filterSize = 15)
         {
             ImageData = imageData;
             FileName = fileName;
@@ -54,6 +60,7 @@ namespace GaussianImageProcessingSystem.Models
             Height = height;
             Format = format;
             PacketId = Guid.NewGuid().ToString();
+            FilterSize = filterSize;
         }
     }
 }

@@ -5,98 +5,38 @@ using SysDrawingImaging = System.Drawing.Imaging;
 namespace GaussianImageProcessingSystem.Services
 {
     /// <summary>
-    /// 🔥 УСЛОЖНЕННАЯ ВЕРСИЯ - обработка в 10-20 раз медленнее!
-    /// Для демонстрации эффекта параллелизма при работе с несколькими Slave узлами
+    /// Сервис применения фильтра Гаусса с поддержкой переменного размера ядра
     /// </summary>
     public class GaussianFilterService
     {
         /// <summary>
-        /// Применение УСИЛЕННОГО фильтра Гаусса с множественными проходами
+        /// Применение фильтра Гаусса с указанным размером ядра
         /// </summary>
-        public byte[] ApplyGaussianFilter(byte[] imageData, double sigma = 2.0, int kernelSize = 5)
+        public byte[] ApplyGaussianFilter(byte[] imageData, double sigma = 2.0, int kernelSize = 15)
         {
             try
             {
                 using (MemoryStream ms = new MemoryStream(imageData))
                 using (SysDrawing.Bitmap originalImage = new SysDrawing.Bitmap(ms))
                 {
-                    SysDrawing.Bitmap processedImage = originalImage;
-
-                    // ════════════════════════════════════════════════════
-                    // УСЛОЖНЕНИЕ #1: Увеличенное ядро 15x15
-                    // ════════════════════════════════════════════════════
-                    // Было: 5x5 = 25 операций на пиксель
-                    // Стало: 15x15 = 225 операций на пиксель (в 9 раз больше!)
-
-                    int heavyKernelSize = 15;
-                    double heavySigma = 3.5;
-
-                    // ════════════════════════════════════════════════════
-                    // УСЛОЖНЕНИЕ #2: Многопроходная обработка (5 проходов)
-                    // ════════════════════════════════════════════════════
-                    // Применяем фильтр Гаусса 5 РАЗ ПОДРЯД!
-
-                    for (int pass = 1; pass <= 5; pass++)
-                    {
-                        SysDrawing.Bitmap tempResult = ApplyGaussianFilterToBitmap(
-                            processedImage,
-                            heavySigma,
-                            heavyKernelSize);
-
-                        if (pass > 1)
-                            processedImage.Dispose();
-
-                        processedImage = tempResult;
-                    }
-
-                    // ════════════════════════════════════════════════════
-                    // УСЛОЖНЕНИЕ #3: Фильтр резкости
-                    // ════════════════════════════════════════════════════
-                    // Дополнительная свёрточная операция 3x3
-
-                    SysDrawing.Bitmap sharpenedImage = ApplySharpenFilter(processedImage);
-                    processedImage.Dispose();
-                    processedImage = sharpenedImage;
-
-                    // ════════════════════════════════════════════════════
-                    // УСЛОЖНЕНИЕ #4: Фильтр контраста
-                    // ════════════════════════════════════════════════════
-                    // Попиксельная обработка всего изображения
-
-                    SysDrawing.Bitmap contrastedImage = ApplyContrastFilter(processedImage, 1.2);
-                    processedImage.Dispose();
-                    processedImage = contrastedImage;
-
-                    // ════════════════════════════════════════════════════
-                    // УСЛОЖНЕНИЕ #5: Финальное размытие (большое ядро 11x11)
-                    // ════════════════════════════════════════════════════
-                    // Еще один проход с ядром 11x11 = 121 операция на пиксель
-
-                    SysDrawing.Bitmap finalImage = ApplyGaussianFilterToBitmap(
-                        processedImage,
-                        2.0,
-                        11);
-                    processedImage.Dispose();
-
-                    // ════════════════════════════════════════════════════
-                    // УСЛОЖНЕНИЕ #6: Дополнительный проход для яркости
-                    // ════════════════════════════════════════════════════
-
-                    SysDrawing.Bitmap brightenedImage = ApplyBrightnessFilter(finalImage, 1.05);
-                    finalImage.Dispose();
+                    // Применяем фильтр Гаусса с заданным размером ядра
+                    SysDrawing.Bitmap processedImage = ApplyGaussianFilterToBitmap(
+                        originalImage,
+                        sigma,
+                        kernelSize);
 
                     // Сохранение результата
                     using (MemoryStream outputMs = new MemoryStream())
                     {
-                        brightenedImage.Save(outputMs, SysDrawingImaging.ImageFormat.Png);
-                        brightenedImage.Dispose();
+                        processedImage.Save(outputMs, SysDrawingImaging.ImageFormat.Png);
+                        processedImage.Dispose();
                         return outputMs.ToArray();
                     }
                 }
             }
             catch (Exception ex)
             {
-                throw new Exception($"Ошибка применения усиленного фильтра: {ex.Message}", ex);
+                throw new Exception($"Ошибка применения фильтра: {ex.Message}", ex);
             }
         }
 
@@ -151,189 +91,6 @@ namespace GaussianImageProcessingSystem.Services
 
                                 int pixelOffset = newY * stride + newX * bytesPerPixel;
                                 double kernelValue = kernel[ky + offset, kx + offset];
-
-                                blueSum += originalPtr[pixelOffset] * kernelValue;
-                                greenSum += originalPtr[pixelOffset + 1] * kernelValue;
-                                redSum += originalPtr[pixelOffset + 2] * kernelValue;
-                            }
-                        }
-
-                        int resultPixelOffset = y * stride + x * bytesPerPixel;
-                        resultPtr[resultPixelOffset] = (byte)Math.Max(0, Math.Min(255, blueSum));
-                        resultPtr[resultPixelOffset + 1] = (byte)Math.Max(0, Math.Min(255, greenSum));
-                        resultPtr[resultPixelOffset + 2] = (byte)Math.Max(0, Math.Min(255, redSum));
-                    }
-                }
-            }
-
-            original.UnlockBits(originalData);
-            result.UnlockBits(resultData);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Фильтр резкости (Sharpen) - свёртка 3x3
-        /// </summary>
-        private SysDrawing.Bitmap ApplySharpenFilter(SysDrawing.Bitmap original)
-        {
-            double[,] sharpenKernel = new double[3, 3]
-            {
-                { -1, -1, -1 },
-                { -1,  9, -1 },
-                { -1, -1, -1 }
-            };
-
-            return ApplyConvolutionFilter(original, sharpenKernel);
-        }
-
-        /// <summary>
-        /// Фильтр контраста - попиксельная обработка
-        /// </summary>
-        private SysDrawing.Bitmap ApplyContrastFilter(SysDrawing.Bitmap original, double contrast)
-        {
-            int width = original.Width;
-            int height = original.Height;
-            SysDrawing.Bitmap result = new SysDrawing.Bitmap(width, height);
-
-            SysDrawingImaging.BitmapData originalData = original.LockBits(
-                new SysDrawing.Rectangle(0, 0, width, height),
-                SysDrawingImaging.ImageLockMode.ReadOnly,
-                SysDrawingImaging.PixelFormat.Format24bppRgb);
-
-            SysDrawingImaging.BitmapData resultData = result.LockBits(
-                new SysDrawing.Rectangle(0, 0, width, height),
-                SysDrawingImaging.ImageLockMode.WriteOnly,
-                SysDrawingImaging.PixelFormat.Format24bppRgb);
-
-            int bytesPerPixel = 3;
-            int stride = originalData.Stride;
-
-            unsafe
-            {
-                byte* originalPtr = (byte*)originalData.Scan0.ToPointer();
-                byte* resultPtr = (byte*)resultData.Scan0.ToPointer();
-
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int pixelOffset = y * stride + x * bytesPerPixel;
-
-                        for (int c = 0; c < 3; c++)
-                        {
-                            double pixel = originalPtr[pixelOffset + c];
-                            pixel = ((pixel / 255.0 - 0.5) * contrast + 0.5) * 255.0;
-                            resultPtr[pixelOffset + c] = (byte)Math.Max(0, Math.Min(255, pixel));
-                        }
-                    }
-                }
-            }
-
-            original.UnlockBits(originalData);
-            result.UnlockBits(resultData);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Фильтр яркости - попиксельная обработка
-        /// </summary>
-        private SysDrawing.Bitmap ApplyBrightnessFilter(SysDrawing.Bitmap original, double brightnessFactor)
-        {
-            int width = original.Width;
-            int height = original.Height;
-            SysDrawing.Bitmap result = new SysDrawing.Bitmap(width, height);
-
-            SysDrawingImaging.BitmapData originalData = original.LockBits(
-                new SysDrawing.Rectangle(0, 0, width, height),
-                SysDrawingImaging.ImageLockMode.ReadOnly,
-                SysDrawingImaging.PixelFormat.Format24bppRgb);
-
-            SysDrawingImaging.BitmapData resultData = result.LockBits(
-                new SysDrawing.Rectangle(0, 0, width, height),
-                SysDrawingImaging.ImageLockMode.WriteOnly,
-                SysDrawingImaging.PixelFormat.Format24bppRgb);
-
-            int bytesPerPixel = 3;
-            int stride = originalData.Stride;
-
-            unsafe
-            {
-                byte* originalPtr = (byte*)originalData.Scan0.ToPointer();
-                byte* resultPtr = (byte*)resultData.Scan0.ToPointer();
-
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int pixelOffset = y * stride + x * bytesPerPixel;
-
-                        for (int c = 0; c < 3; c++)
-                        {
-                            double pixel = originalPtr[pixelOffset + c] * brightnessFactor;
-                            resultPtr[pixelOffset + c] = (byte)Math.Max(0, Math.Min(255, pixel));
-                        }
-                    }
-                }
-            }
-
-            original.UnlockBits(originalData);
-            result.UnlockBits(resultData);
-
-            return result;
-        }
-
-        /// <summary>
-        /// Применение произвольного свёрточного фильтра
-        /// </summary>
-        private SysDrawing.Bitmap ApplyConvolutionFilter(SysDrawing.Bitmap original, double[,] kernel)
-        {
-            int width = original.Width;
-            int height = original.Height;
-            int kernelSize = kernel.GetLength(0);
-            int offset = kernelSize / 2;
-
-            SysDrawing.Bitmap result = new SysDrawing.Bitmap(width, height);
-
-            SysDrawingImaging.BitmapData originalData = original.LockBits(
-                new SysDrawing.Rectangle(0, 0, width, height),
-                SysDrawingImaging.ImageLockMode.ReadOnly,
-                SysDrawingImaging.PixelFormat.Format24bppRgb);
-
-            SysDrawingImaging.BitmapData resultData = result.LockBits(
-                new SysDrawing.Rectangle(0, 0, width, height),
-                SysDrawingImaging.ImageLockMode.WriteOnly,
-                SysDrawingImaging.PixelFormat.Format24bppRgb);
-
-            int bytesPerPixel = 3;
-            int stride = originalData.Stride;
-
-            unsafe
-            {
-                byte* originalPtr = (byte*)originalData.Scan0.ToPointer();
-                byte* resultPtr = (byte*)resultData.Scan0.ToPointer();
-
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        double blueSum = 0, greenSum = 0, redSum = 0;
-
-                        for (int ky = 0; ky < kernelSize; ky++)
-                        {
-                            for (int kx = 0; kx < kernelSize; kx++)
-                            {
-                                int newX = x + kx - offset;
-                                int newY = y + ky - offset;
-
-                                if (newX < 0) newX = 0;
-                                if (newX >= width) newX = width - 1;
-                                if (newY < 0) newY = 0;
-                                if (newY >= height) newY = height - 1;
-
-                                int pixelOffset = newY * stride + newX * bytesPerPixel;
-                                double kernelValue = kernel[ky, kx];
 
                                 blueSum += originalPtr[pixelOffset] * kernelValue;
                                 greenSum += originalPtr[pixelOffset + 1] * kernelValue;
