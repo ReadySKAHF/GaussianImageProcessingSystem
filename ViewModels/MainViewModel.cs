@@ -131,7 +131,9 @@ namespace GaussianImageProcessingSystem.ViewModels
         public MainViewModel()
         {
             NodeTypes = new ObservableCollection<string> { "Client", "Master", "Slave" };
-            FilterSizes = new ObservableCollection<string> { "10x10", "15x15", "20x20" };
+            // ИСПРАВЛЕНО: Теперь используются только НЕЧЁТНЫЕ размеры ядра (15, 25, 35)
+            // Чётные размеры (10, 20) вызывали проблемы с фильтром Гаусса
+            FilterSizes = new ObservableCollection<string> { "15x15", "25x25", "35x35" };
             LogMessages = new ObservableCollection<string>();
             Images = new ObservableCollection<ImageItemViewModel>();
 

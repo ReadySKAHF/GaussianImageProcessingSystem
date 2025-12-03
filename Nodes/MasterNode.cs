@@ -15,8 +15,10 @@ namespace GaussianImageProcessingSystem.Nodes
         private Dictionary<string, bool> _slaveBusyStatus;
         private int _totalTasksReceived = 0;
         private int _totalTasksCompleted = 0;
-        private DateTime _firstTaskTime;
-        private DateTime _lastTaskTime;
+
+        // ИСПРАВЛЕНО: Явная инициализация DateTime для корректного подсчета времени
+        private DateTime _firstTaskTime = DateTime.MinValue;
+        private DateTime _lastTaskTime = DateTime.MinValue;
         private int _filterSize = 15;
 
         private int _currentSlaveIndex = 0;
@@ -137,10 +139,12 @@ namespace GaussianImageProcessingSystem.Nodes
 
                 _totalTasksReceived++;
 
+                // ИСПРАВЛЕНО: Правильное отслеживание времени первой задачи
                 if (_totalTasksReceived == 1)
                 {
                     _firstTaskTime = DateTime.Now;
                     _filterSize = packet.FilterSize;
+                    Log($"Запуск таймера обработки. Размер фильтра: {_filterSize}x{_filterSize}");
                 }
 
                 Log($"");
@@ -292,6 +296,8 @@ namespace GaussianImageProcessingSystem.Nodes
                 string slaveKey = $"{e.Message.SenderIp}:{packet.SlavePort}";
 
                 _totalTasksCompleted++;
+
+                // ИСПРАВЛЕНО: Обновляем время последней завершенной задачи
                 _lastTaskTime = DateTime.Now;
 
                 Log($"");
@@ -338,8 +344,11 @@ namespace GaussianImageProcessingSystem.Nodes
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 Log($"   Прогресс: {_totalTasksCompleted}/{_totalTasksReceived} завершено");
 
+                // ИСПРАВЛЕНО: Улучшенная проверка завершения всех задач
                 if (_totalTasksCompleted == _totalTasksReceived && _totalTasksReceived > 0)
                 {
+                    // Добавлена небольшая задержка для корректного расчета времени
+                    await Task.Delay(100);
                     ShowFinalStatistics();
                 }
 
@@ -400,6 +409,22 @@ namespace GaussianImageProcessingSystem.Nodes
 
         private void ShowFinalStatistics()
         {
+            // ИСПРАВЛЕНО: Проверяем, что времена корректно установлены
+            if (_firstTaskTime == DateTime.MinValue || _lastTaskTime == DateTime.MinValue)
+            {
+                Log($"═══════════════════════════════════════════════════════");
+                Log($"             ВСЕ ЗАДАЧИ ВЫПОЛНЕНЫ!                     ");
+                Log($"═══════════════════════════════════════════════════════");
+                Log($"");
+                Log($"Всего задач обработано: {_totalTasksCompleted}");
+                Log($"Количество Slave узлов: {_registeredSlaves.Count}");
+                Log($"Размер фильтра Гаусса: {_filterSize}x{_filterSize}");
+                Log($"");
+                Log($"(Время не подсчитано - недостаточно данных)");
+                Log($"═══════════════════════════════════════════════════════");
+                return;
+            }
+
             TimeSpan totalTime = _lastTaskTime - _firstTaskTime;
             double avgTimePerTask = _totalTasksCompleted > 0 ? totalTime.TotalSeconds / _totalTasksCompleted : 0;
 
@@ -409,9 +434,22 @@ namespace GaussianImageProcessingSystem.Nodes
             Log($"═══════════════════════════════════════════════════════");
             Log($"");
             Log($"Общее время выполнения: {totalTime.TotalSeconds:F2} сек");
+            Log($"Всего задач: {_totalTasksCompleted}");
             Log($"Среднее время на задачу: {avgTimePerTask:F2} сек");
             Log($"Количество Slave узлов: {_registeredSlaves.Count}");
             Log($"Размер фильтра Гаусса: {_filterSize}x{_filterSize}");
+            Log($"");
+
+            // Дополнительная статистика по Slave узлам
+            Log($"СТАТИСТИКА SLAVE УЗЛОВ:");
+            for (int i = 0; i < _registeredSlaves.Count; i++)
+            {
+                var slave = _registeredSlaves[i];
+                Log($"  Slave #{i + 1} ({slave.IpAddress}:{slave.Port}):");
+                Log($"    - Обработано задач: {slave.TasksCompleted}");
+                Log($"    - Среднее время: {slave.AverageProcessingTime:F2} сек");
+            }
+
             Log($"");
             Log($"═══════════════════════════════════════════════════════");
         }
