@@ -89,7 +89,6 @@ namespace GaussianImageProcessingSystem.Services
                 {
                     TcpClient client = await _tcpListener.AcceptTcpClientAsync();
 
-                    // Обрабатываем каждого клиента в отдельной задаче
                     var task = Task.Run(() => HandleClientAsync(client, cancellationToken), cancellationToken);
                     lock (_clientTasks)
                     {
@@ -123,29 +122,26 @@ namespace GaussianImageProcessingSystem.Services
 
                 while (client.Connected && !cancellationToken.IsCancellationRequested)
                 {
-                    // Проверяем, есть ли доступные данные
                     if (!stream.DataAvailable)
                     {
                         await Task.Delay(10, cancellationToken);
                         continue;
                     }
 
-                    // Читаем длину сообщения (4 байта)
                     byte[] lengthBuffer = new byte[4];
                     int bytesRead = await stream.ReadAsync(lengthBuffer, 0, 4, cancellationToken);
 
                     if (bytesRead == 0)
-                        break; // Клиент отключился
+                        break; 
 
                     if (bytesRead < 4)
-                        continue; // Неполные данные
+                        continue; 
 
                     int messageLength = BitConverter.ToInt32(lengthBuffer, 0);
 
-                    if (messageLength <= 0 || messageLength > 50000000) // Защита от слишком больших сообщений
+                    if (messageLength <= 0 || messageLength > 50000000)
                         continue;
 
-                    // Читаем само сообщение
                     byte[] messageBuffer = new byte[messageLength];
                     int totalRead = 0;
 
@@ -167,7 +163,6 @@ namespace GaussianImageProcessingSystem.Services
                     {
                         NetworkMessage message = NetworkMessage.Deserialize(messageBuffer);
 
-                        // Получаем информацию об отправителе
                         var remoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
                         if (remoteEndpoint != null)
                         {
@@ -181,7 +176,7 @@ namespace GaussianImageProcessingSystem.Services
             }
             catch (OperationCanceledException)
             {
-                // Нормальное завершение
+
             }
             catch (Exception ex)
             {
@@ -257,7 +252,6 @@ namespace GaussianImageProcessingSystem.Services
 
                 byte[] messageData = message.Serialize();
 
-                // Добавляем префикс длины (4 байта)
                 byte[] lengthPrefix = BitConverter.GetBytes(messageData.Length);
                 byte[] dataToSend = new byte[lengthPrefix.Length + messageData.Length];
 
@@ -292,7 +286,6 @@ namespace GaussianImageProcessingSystem.Services
 
                 byte[] messageData = message.Serialize();
 
-                // Добавляем префикс длины (4 байта)
                 byte[] lengthPrefix = BitConverter.GetBytes(messageData.Length);
                 byte[] dataToSend = new byte[lengthPrefix.Length + messageData.Length];
 

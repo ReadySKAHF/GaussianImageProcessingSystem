@@ -19,13 +19,11 @@ namespace GaussianImageProcessingSystem.Services
                 using (MemoryStream ms = new MemoryStream(imageData))
                 using (SysDrawing.Bitmap originalImage = new SysDrawing.Bitmap(ms))
                 {
-                    // Применяем фильтр Гаусса с заданным размером ядра
                     SysDrawing.Bitmap processedImage = ApplyGaussianFilterToBitmap(
                         originalImage,
                         sigma,
                         kernelSize);
 
-                    // Сохранение результата
                     using (MemoryStream outputMs = new MemoryStream())
                     {
                         processedImage.Save(outputMs, SysDrawingImaging.ImageFormat.Png);

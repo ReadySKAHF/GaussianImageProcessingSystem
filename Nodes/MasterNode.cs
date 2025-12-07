@@ -16,7 +16,6 @@ namespace GaussianImageProcessingSystem.Nodes
         private int _totalTasksReceived = 0;
         private int _totalTasksCompleted = 0;
 
-        // ИСПРАВЛЕНО: Явная инициализация DateTime для корректного подсчета времени
         private DateTime _firstTaskTime = DateTime.MinValue;
         private DateTime _lastTaskTime = DateTime.MinValue;
         private int _filterSize = 15;
@@ -139,7 +138,6 @@ namespace GaussianImageProcessingSystem.Nodes
 
                 _totalTasksReceived++;
 
-                // ИСПРАВЛЕНО: Правильное отслеживание времени первой задачи
                 if (_totalTasksReceived == 1)
                 {
                     _firstTaskTime = DateTime.Now;
@@ -297,7 +295,6 @@ namespace GaussianImageProcessingSystem.Nodes
 
                 _totalTasksCompleted++;
 
-                // ИСПРАВЛЕНО: Обновляем время последней завершенной задачи
                 _lastTaskTime = DateTime.Now;
 
                 Log($"");
@@ -344,10 +341,8 @@ namespace GaussianImageProcessingSystem.Nodes
                 Log($"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                 Log($"   Прогресс: {_totalTasksCompleted}/{_totalTasksReceived} завершено");
 
-                // ИСПРАВЛЕНО: Улучшенная проверка завершения всех задач
                 if (_totalTasksCompleted == _totalTasksReceived && _totalTasksReceived > 0)
                 {
-                    // Добавлена небольшая задержка для корректного расчета времени
                     await Task.Delay(100);
                     ShowFinalStatistics();
                 }
@@ -409,7 +404,6 @@ namespace GaussianImageProcessingSystem.Nodes
 
         private void ShowFinalStatistics()
         {
-            // ИСПРАВЛЕНО: Проверяем, что времена корректно установлены
             if (_firstTaskTime == DateTime.MinValue || _lastTaskTime == DateTime.MinValue)
             {
                 Log($"═══════════════════════════════════════════════════════");
@@ -440,7 +434,6 @@ namespace GaussianImageProcessingSystem.Nodes
             Log($"Размер фильтра Гаусса: {_filterSize}x{_filterSize}");
             Log($"");
 
-            // Дополнительная статистика по Slave узлам
             Log($"СТАТИСТИКА SLAVE УЗЛОВ:");
             for (int i = 0; i < _registeredSlaves.Count; i++)
             {

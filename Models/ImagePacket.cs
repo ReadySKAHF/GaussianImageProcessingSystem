@@ -27,7 +27,7 @@ namespace GaussianImageProcessingSystem.Models
         public int Height { get; set; }
 
         /// <summary>
-        /// Формат изображения (PNG, JPEG и т.д.)
+        /// Формат изображения (PNG, JPEG)
         /// </summary>
         public string Format { get; set; }
 
@@ -42,14 +42,14 @@ namespace GaussianImageProcessingSystem.Models
         public int SlavePort { get; set; }
 
         /// <summary>
-        /// Размер ядра фильтра Гаусса (например, 10, 15, 20)
+        /// Размер ядра фильтра Гаусса (10, 15, 20)
         /// </summary>
         public int FilterSize { get; set; }
 
         public ImagePacket()
         {
             PacketId = Guid.NewGuid().ToString();
-            FilterSize = 15; // Значение по умолчанию
+            FilterSize = 15;
         }
 
         public ImagePacket(byte[] imageData, string fileName, int width, int height, string format, int filterSize = 15)
